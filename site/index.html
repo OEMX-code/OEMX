@@ -1,0 +1,1209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OEMX Operations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+/* Layout: dark ink header band, tab rail, then a full-width working surface; the roster grid scrolls inside its own frame with a sticky name column. */
+:root{
+  --bg:#F5F3F2; --surface:#FFFFFF; --sunk:#EDE9E7; --ink:#1E1A1A; --muted:#6C6361; --line:#E0DAD8;
+  --accent:#A4232B; --accent-ink:#FFFFFF; --accent-soft:#F6E3E4;
+  --band:#1E1A1A; --band-ink:#F5F1F0;
+  --ok:#2F7D4E; --warn:#A86A12; --crit:#B3261E; --warn-soft:#FBF0DC; --crit-soft:#F9E1DF;
+  --today:#FFF4D6;
+  --f-display:"Barlow Condensed","Arial Narrow","Roboto Condensed",sans-serif;
+  --f-body:"Barlow","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --r:6px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#141212; --surface:#1D1A1A; --sunk:#252121; --ink:#EEE8E7; --muted:#A79D9B; --line:#363031;
+  --accent:#E25560; --accent-ink:#1A0A0B; --accent-soft:#3A1E21;
+  --band:#0D0B0B; --band-ink:#EEE8E7;
+  --ok:#5DBB83; --warn:#E3A84A; --crit:#F0766C; --warn-soft:#3A2D14; --crit-soft:#3E1D1A; --today:#3A3216;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141212; --surface:#1D1A1A; --sunk:#252121; --ink:#EEE8E7; --muted:#A79D9B; --line:#363031;
+  --accent:#E25560; --accent-ink:#1A0A0B; --accent-soft:#3A1E21;
+  --band:#0D0B0B; --band-ink:#EEE8E7;
+  --ok:#5DBB83; --warn:#E3A84A; --crit:#F0766C; --warn-soft:#3A2D14; --crit-soft:#3E1D1A; --today:#3A3216;
+  color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--band)}
+.wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header.band{background:var(--band);color:var(--band-ink)}
+header.band .wrap{display:flex;align-items:center;gap:14px;padding-block:12px;flex-wrap:wrap}
+.mark{font-family:var(--f-display);font-weight:700;font-size:22px;letter-spacing:.04em;background:var(--accent);color:#fff;padding:2px 8px;border-radius:3px;line-height:1.2}
+header h1{font-family:var(--f-display);font-weight:600;font-size:22px;margin:0;letter-spacing:.02em;text-wrap:balance}
+header .sync{margin-left:auto;font-size:12px;color:var(--band-ink);opacity:.7;display:flex;align-items:center;gap:6px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--warn)}
+.dot.on{background:#4CC27E}
+nav.tabs{background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+nav.tabs .wrap{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+nav.tabs a{font-family:var(--f-display);font-weight:600;font-size:16px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);text-decoration:none;padding:12px 12px 10px;border-bottom:3px solid transparent;white-space:nowrap}
+nav.tabs a[aria-current="page"]{color:var(--ink);border-color:var(--accent)}
+nav.tabs a:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+main{padding-block:16px 48px}
+h2{font-family:var(--f-display);font-weight:700;font-size:26px;margin:0;letter-spacing:.01em;text-wrap:balance}
+h3{font-family:var(--f-display);font-weight:600;font-size:18px;margin:0;letter-spacing:.02em;text-transform:uppercase;color:var(--muted)}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.stack{display:flex;flex-direction:column;gap:14px}
+.spacer{flex:1}
+button,.btn{font:inherit;font-weight:600;font-size:14px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:var(--r);padding:8px 12px;cursor:pointer;min-height:38px}
+button:hover{border-color:var(--muted)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+button.danger{color:var(--crit);border-color:var(--crit)}
+button.icon{padding:8px 10px;min-width:38px}
+button:disabled{opacity:.5;cursor:default}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.seg button{border:0;border-radius:0;min-height:36px}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+input,select,textarea{font:inherit;font-size:15px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;min-height:38px;width:100%;min-width:0}
+textarea{min-height:80px;resize:vertical}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);min-width:0}
+label.f>span.hint{text-transform:none;letter-spacing:0;font-weight:400}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--sunk);color:var(--ink);white-space:nowrap}
+.chip.warn{background:var(--warn-soft);color:var(--warn)}
+.chip.crit{background:var(--crit-soft);color:var(--crit)}
+.chip.ok{color:var(--ok)}
+.code{font-family:var(--f-display);font-weight:700;letter-spacing:.03em}
+.num{font-variant-numeric:tabular-nums}
+
+/* roster toolbar + summary */
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.toolbar .wk{font-family:var(--f-display);font-weight:700;font-size:20px;min-width:0}
+.toolbar input[type=search]{width:auto;flex:1 1 160px}
+.toolbar select{width:auto;flex:0 1 auto}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;min-width:0}
+.stat b{display:block;font-family:var(--f-display);font-size:26px;font-weight:700;line-height:1.1}
+.stat span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.stat.alert{border-color:var(--crit)}
+.stat.alert b{color:var(--crit)}
+.byco{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+
+/* roster grid */
+.gridframe{overflow:auto;max-height:72vh;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+table.ros{border-collapse:separate;border-spacing:0;font-size:13px;width:max-content;min-width:100%}
+table.ros th,table.ros td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:0}
+table.ros thead th{position:sticky;top:0;z-index:3;background:var(--sunk);font-family:var(--f-display);font-weight:600;font-size:13px;letter-spacing:.04em;text-transform:uppercase;padding:6px 4px;text-align:center}
+table.ros thead th.today{background:var(--today)}
+table.ros th.name,table.ros td.name{position:sticky;left:0;z-index:2;background:var(--surface);text-align:left;width:168px;min-width:168px;max-width:168px}
+table.ros thead th.name{z-index:4;background:var(--sunk);padding-left:10px}
+td.name .who{padding:5px 8px 5px 10px;display:flex;flex-direction:column;gap:1px;cursor:pointer}
+td.name .nm{font-weight:600;font-size:14px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+td.name .meta{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+td.name .flagdot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--crit);margin-left:4px;vertical-align:middle}
+tr.grp td{background:var(--sunk);font-family:var(--f-display);font-weight:700;font-size:14px;letter-spacing:.05em;text-transform:uppercase;padding:5px 10px;position:sticky;left:0}
+tr.grp td .muted{font-family:var(--f-body);font-weight:500;text-transform:none;letter-spacing:0;font-size:12px}
+td.cell{width:70px;min-width:70px;height:48px;vertical-align:stretch}
+.span14 td.cell{width:54px;min-width:54px}
+td.cell.today{box-shadow:inset 0 0 0 9999px color-mix(in srgb,var(--today) 35%,transparent)}
+.cb{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;min-height:48px;border:0;border-radius:0;padding:2px;background:transparent;font:inherit;cursor:pointer;position:relative;color:inherit}
+.cb .c{font-family:var(--f-display);font-weight:700;font-size:14px;letter-spacing:.02em;line-height:1.05;text-align:center;word-break:break-word}
+.cb .h{font-size:11px;font-variant-numeric:tabular-nums;opacity:.85;line-height:1.1}
+.cb .k{position:absolute;top:1px;right:3px;font-size:9px;font-weight:600;opacity:.8}
+.cb.empty .c{color:var(--line);font-weight:500}
+.cb.flag::after{content:"";position:absolute;left:3px;top:3px;width:7px;height:7px;border-radius:50%;background:var(--crit);box-shadow:0 0 0 1.5px #fff}
+.cb:hover{filter:brightness(.95)}
+td.tot{font-variant-numeric:tabular-nums;font-weight:600;text-align:right;padding:0 8px;width:58px;min-width:58px;background:var(--surface)}
+.flags{margin-top:12px}
+.flags ul{margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+
+/* lists */
+.tframe{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+table.list{border-collapse:collapse;width:100%;font-size:14px}
+table.list th{text-align:left;font-family:var(--f-display);font-weight:600;font-size:13px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line);background:var(--sunk);white-space:nowrap}
+table.list td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+table.list tr.click{cursor:pointer}
+table.list tr.click:hover td{background:var(--sunk)}
+table.list td.r,table.list th.r{text-align:right}
+table.list input.price{width:96px;text-align:right;min-height:32px;padding:4px 8px}
+.swatch{display:inline-flex;align-items:center;justify-content:center;min-width:58px;padding:3px 6px;border-radius:3px;font-family:var(--f-display);font-weight:700;font-size:14px;letter-spacing:.02em}
+.secthead{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin:6px 0 12px}
+
+/* FY roster */
+table.ros.fy td.cell{height:30px}
+table.ros.fy .cb{min-height:30px;padding:0 1px}
+table.ros.fy .cb .c{font-size:11.5px;letter-spacing:0;white-space:nowrap}
+table.ros.fy .cb .c.lg{font-size:9px}
+.cb .c.lg{font-size:12px}
+table.ros.fy td.cell{width:44px;min-width:44px}
+table.ros thead tr.months th.name{z-index:5}
+table.ros.fy .cb .h,table.ros.fy .cb .k{display:none}
+table.ros.fy thead th{font-size:11px;padding:3px 1px}
+table.ros.fy td.name .who{padding:3px 8px 3px 10px}
+table.ros.fy td.name .meta{display:none}
+table.ros.fy td.name .nm{font-size:13px}
+table.ros thead tr.months th{top:0;text-align:left;padding-left:8px;font-size:13px;letter-spacing:.06em;background:var(--surface);border-bottom:1px solid var(--line)}
+table.ros thead tr.days th{top:var(--mh,0px)}
+table.ros th.wk,table.ros td.wk{border-left:2px solid var(--muted)}
+.cb.pj{opacity:.62;background-image:repeating-linear-gradient(135deg,transparent 0 5px,rgba(255,255,255,.28) 5px 7px)}
+.cb.pl{box-shadow:inset 0 -3px 0 rgba(0,0,0,.18)}
+.showproj-off .cb.pj{visibility:hidden}
+tr.onbline td{border-top:3px solid var(--ink);background:var(--accent-soft);font-family:var(--f-display);font-weight:700;font-size:15px;letter-spacing:.08em;text-transform:uppercase;padding:6px 10px;position:sticky;left:0;color:var(--accent)}
+tr.onbline td .muted{font-family:var(--f-body);font-weight:500;letter-spacing:0;text-transform:none;font-size:12px;color:var(--muted)}
+tr.onb td.name{background:var(--accent-soft)}
+.stick{position:sticky;left:10px;display:inline-block}
+tr.grp td,tr.onbline td{position:static!important}
+.keyrow{display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--muted);margin:8px 0 0}
+.keyrow .sw{display:inline-block;width:26px;height:16px;border-radius:2px;vertical-align:middle;margin-right:5px;background:#1A73A8}
+.keyrow .sw.pl{box-shadow:inset 0 -3px 0 rgba(0,0,0,.25)}
+.keyrow .sw.pj{opacity:.62;background-image:repeating-linear-gradient(135deg,transparent 0 5px,rgba(255,255,255,.35) 5px 7px)}
+.empty-state{padding:28px;text-align:center;color:var(--muted)}
+
+/* dialogs */
+dialog{border:0;padding:0;border-radius:10px;background:var(--surface);color:var(--ink);width:min(640px,calc(100vw - 24px));max-height:calc(100vh - 24px);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+dialog.wide{width:min(980px,calc(100vw - 24px))}
+dialog::backdrop{background:rgba(20,16,16,.55)}
+.dh{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface);z-index:2}
+.dh h2{font-size:22px}
+.db{padding:16px;display:flex;flex-direction:column;gap:14px}
+.df{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--line);position:sticky;bottom:0;background:var(--surface)}
+.quick{display:flex;gap:6px;flex-wrap:wrap}
+.quick button{min-height:32px;padding:4px 10px;font-family:var(--f-display);font-weight:700;letter-spacing:.03em}
+.desc{font-size:13px;color:var(--muted);min-height:18px}
+.confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--crit-soft);color:var(--crit);padding:8px 10px;border-radius:var(--r);font-size:14px}
+
+/* quote lines */
+.ql{overflow-x:auto}
+table.qt{border-collapse:collapse;width:100%;min-width:720px;font-size:14px}
+table.qt th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:left;padding:6px;border-bottom:1px solid var(--line)}
+table.qt td{padding:4px;border-bottom:1px solid var(--line);vertical-align:top}
+table.qt td.amt{text-align:right;font-weight:600;font-variant-numeric:tabular-nums;padding-top:12px;white-space:nowrap}
+table.qt input,table.qt select{min-height:34px;padding:5px 7px;font-size:14px}
+table.qt .rng{font-size:11px;color:var(--warn);padding:2px 2px 0}
+.totals{display:grid;grid-template-columns:auto auto;gap:4px 18px;justify-content:end;font-variant-numeric:tabular-nums}
+.totals b{font-size:20px;font-family:var(--f-display)}
+.helper{background:var(--sunk);border-radius:var(--r);padding:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;align-items:end}
+
+#toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:var(--r);font-size:14px;font-weight:600;z-index:50;max-width:calc(100vw - 32px)}
+#toast.err{background:var(--crit);color:#fff}
+.notice{background:var(--warn-soft);color:var(--warn);border-radius:var(--r);padding:10px 12px;font-size:14px}
+@media (max-width:560px){
+  h2{font-size:22px}
+  table.ros th.name,table.ros td.name{width:128px;min-width:128px;max-width:128px}
+  td.cell{width:58px;min-width:58px}
+  dialog{width:100vw;max-width:100vw;max-height:100%;height:100%;border-radius:0;margin:0}
+}
+
+/* phone landscape: roster fills the screen */
+.rotate-hint{display:none}
+.landonly{display:none!important}
+@media (max-width:560px) and (orientation:portrait){
+  .rotate-hint{display:flex;align-items:center;gap:10px;background:var(--sunk);border-radius:var(--r);padding:8px 10px;margin-bottom:10px;font-size:13px;color:var(--muted)}
+  .summary{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+  .stat{padding:6px 8px}
+  .stat b{font-size:20px}
+  .stat span{font-size:10px;letter-spacing:.03em}
+  .toolbar{gap:6px}
+  .rotate-hint .ico{font-size:20px;line-height:1;display:inline-block;transform:rotate(90deg)}
+  .rotate-hint button{margin-left:auto;min-height:30px;padding:4px 10px;font-size:13px}
+}
+@media (orientation:landscape) and (max-height:540px){
+  header.band{display:none}
+  body::before{background:var(--surface)}
+  nav.tabs a{font-size:13px;padding:7px 10px 5px}
+  main{padding-block:6px 0}
+  .summary,.byco,.keyrow,.rotate-hint,.panel.flags{display:none!important}
+  .toolbar{flex-wrap:nowrap;overflow-x:auto;gap:6px;margin-bottom:6px;scrollbar-width:none}
+  .toolbar::-webkit-scrollbar{display:none}
+  .toolbar > *{flex:0 0 auto}
+  .toolbar button,.toolbar select,.toolbar input{min-height:32px;padding:4px 8px;font-size:13px}
+  .toolbar .seg button{min-height:30px}
+  .toolbar .wk{font-size:15px;white-space:nowrap}
+  .toolbar input[type=search]{width:170px;flex:0 0 170px}
+  .toolbar label.row{white-space:nowrap}
+  .landonly{display:inline-flex!important}
+  #tb2{display:none}
+  #tb2.open{display:flex}
+  nav.tabs a{padding:5px 10px 4px}
+  td.cell{height:31px}
+  .cb{min-height:31px}
+  .gridframe{max-height:none;border-radius:4px}
+  table.ros th.name,table.ros td.name{width:118px;min-width:118px;max-width:118px}
+  table.ros td.name .meta{display:none}
+  table.ros td.name .who{padding:3px 6px 3px 8px}
+  table.ros td.name .nm{font-size:13px}
+  td.cell{height:34px}
+  .cb{min-height:34px}
+  table.ros thead th{padding:3px 2px;font-size:11px}
+  tr.grp td,tr.onbline td{padding-block:3px;font-size:13px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+.who{display:flex;align-items:center;gap:8px;margin-left:12px;font-size:13px}
+.who button{min-height:0;padding:3px 8px}
+form.login{max-width:380px;margin:40px auto;display:flex;flex-direction:column;gap:12px;background:var(--surface);padding:20px;border-radius:8px;border:1px solid var(--line)}
+form.login h2{margin:0}
+.gwrap{position:relative;width:max-content;min-width:100%}
+.gridframe{outline:none;user-select:none;-webkit-user-select:none}
+#selbox{position:absolute;border:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent);pointer-events:none;z-index:1}
+#selbox .fillh{position:absolute;right:-7px;bottom:-7px;width:13px;height:13px;background:var(--accent);border:2px solid var(--surface);pointer-events:auto;cursor:crosshair;touch-action:none}
+@media (pointer:coarse){#selbox .fillh{width:22px;height:22px;right:-12px;bottom:-12px;border-radius:50%}}
+#fillbox{position:absolute;border:2px dashed var(--accent);pointer-events:none;z-index:1}
+#selbar{position:sticky;bottom:0;z-index:6;display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:6px 8px;margin-top:8px;box-shadow:0 -4px 16px rgba(0,0,0,.08)}
+#selbar button{min-height:32px;padding:4px 10px;font-size:13px}
+.keyrow .rdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--crit);margin-right:5px;vertical-align:middle}
+.picklist{max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:var(--r);padding:4px 8px;display:flex;flex-direction:column}
+.picklist .pick{display:flex;gap:8px;align-items:center;padding:4px 0;font-size:14px;cursor:pointer}
+.picklist .pick input{width:auto;min-height:0}
+.strip{display:flex;flex-wrap:wrap;gap:2px;margin-top:6px}
+.strip .sd{width:44px;height:34px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:3px;font-family:var(--f-display);font-size:11px;line-height:1.05}
+.strip .sd.wk{margin-left:5px}
+.strip .sd i{font-style:normal;font-size:10px;opacity:.85}
+@media (orientation:landscape) and (max-height:540px){#selbar{position:fixed;left:8px;right:8px;bottom:6px;margin:0}}
+[hidden]{display:none!important}
+</style>
+
+</head>
+<body>
+<header class="band">
+  <div class="wrap">
+    <span class="mark">OEMX</span>
+    <h1>Operations</h1>
+    <span class="sync" id="sync"><span class="dot" id="syncdot"></span><span id="synctext">Connecting…</span></span><span class="who" id="who" hidden><span id="whoname"></span><button class="ghost small" id="so" type="button">Sign out</button></span>
+  </div>
+</header>
+<nav class="tabs" aria-label="Sections" hidden>
+  <div class="wrap" id="tabs">
+    <a href="#roster" data-v="roster">Roster</a>
+    <a href="#mob" data-v="mob">Mobilisation</a>
+    <a href="#people" data-v="people">People</a>
+    <a href="#assets" data-v="assets">Assets</a>
+    <a href="#rates" data-v="rates">Clients &amp; rates</a>
+    <a href="#legend" data-v="legend">Legend</a>
+  </div>
+</nav>
+<main class="wrap" id="main">
+  <div class="empty-state">Loading roster, staff and Xero rates…</div>
+</main>
+<dialog id="dlg"></dialog>
+<div id="toast" hidden></div>
+
+<script>
+(function(){
+"use strict";
+/* ---------------- helpers ---------------- */
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const slug=s=>String(s).toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||("x"+Date.now());
+const pad=n=>String(n).padStart(2,"0");
+const iso=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+const pd=s=>{const [y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d)};
+const addD=(s,n)=>{const d=pd(s);d.setDate(d.getDate()+n);return iso(d)};
+const monday=s=>{const d=pd(s);const w=(d.getDay()+6)%7;d.setDate(d.getDate()-w);return iso(d)};
+const DOW=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const fmtD=s=>{const d=pd(s);return d.getDate()+" "+["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()]};
+const money=n=>"$"+(Math.round((+n||0)*100)/100).toLocaleString("en-AU",{minimumFractionDigits:2,maximumFractionDigits:2});
+const TODAY=iso(new Date());
+function hrs(h){ if(h==null)return 0; const s=String(h); if(!/\d/.test(s))return 0; return s.split("+").reduce((a,p)=>{const n=parseFloat(p);return a+(isNaN(n)?0:n)},0)}
+function ink(hex){ const m=/^#?([0-9a-f]{6})$/i.exec(hex||""); if(!m)return "inherit"; const n=parseInt(m[1],16),r=(n>>16)&255,g=(n>>8)&255,b=n&255;
+  const L=c=>{c/=255;return c<=.03928?c/12.92:Math.pow((c+.055)/1.055,2.4)}; const l=.2126*L(r)+.7152*L(g)+.0722*L(b); return l>.42?"#141010":"#FFFFFF"}
+function toast(msg,err){const t=$("#toast");t.textContent=msg;t.className=err?"err":"";t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,err?6000:2600)}
+function errMsg(e){const c=e&&e.code; if(c==="denied"||c==="invalid_argument")return "That change wasn't saved: your login has view-only access to this."; if(c==="later")return "Quotes move across in the next update.";
+  if(c==="quota_exceeded")return "Storage is full. Delete old quotes or roster weeks, then try again."; if(c==="resource_exhausted")return "Too many changes at once. Wait a moment and try again.";
+  return "Couldn't save just now. Check your connection and try again."}
+
+/* ---------------- state ---------------- */
+const S={legend:[],L:new Map(),staff:{},assets:{},clients:{},items:{},quotes:{},weeks:{},loaded:new Set(),
+  view:"roster",week:null,span:(()=>{try{const v=localStorage.getItem("lh-span");return v==="fy"?"fy":v?+v:"fy"}catch(_){return "fy"}})(),showProj:true,group:"company",q:"",co:"",showFlags:false,itemClient:"",legendQ:"",peopleQ:"",inactive:false};
+let db=null;
+const OFFCATS=new Set(["Off roster","Leave"]); const OFFCODES=new Set(["NA","CXL","DEMOB","STD","R","RDO"]);
+const ATTN=new Set(["TBC","REVIEW","LR","MED?","ACC","STBY"]);
+function lg(code){ return code?S.L.get(String(code).trim().toUpperCase()):null }
+function isWorking(code){ if(!code)return false; const e=lg(code); const up=String(code).toUpperCase(); if(OFFCODES.has(up))return false; if(e&&OFFCATS.has(e.cat))return false; return true }
+function isOnSite(code){ const e=lg(code); return !!(e&&e.cat==="Client site") }
+function staffName(s){return (s.first||"")+" "+(s.last||"")}
+function assetByName(n){ if(!n)return null; const up=n.trim().toUpperCase(); return Object.entries(S.assets).find(([,a])=>(a.name||"").toUpperCase()===up)||null }
+function cellOf(sid,date){ const w=S.weeks[monday(date)]; const c=w&&w.cells&&w.cells[sid]&&w.cells[sid][date]; return c||null }
+function companies(){ const set=new Set(S.legend.map(x=>x.co).filter(Boolean)); Object.values(S.staff).forEach(s=>s.company&&set.add(s.company)); return Array.from(set).sort() }
+
+/* ---------------- Supabase data layer ---------------- */
+const SB_URL="https://gaflnumnajejnprlpghw.supabase.co", SB_KEY="sb_publishable_2qksHRs5LQn-YXp7-Trxvg_fCyFqjys";
+const sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true}});
+let ME=null;
+const CAP={active:"Active",onboarding:"Onboarding",subcontractor:"Subcontractor",left:"Left"};
+const nz=v=>(v===""||v==null)?null:v;
+const staffIn=r=>({first:r.first_name,last:r.last_name,trade:r.trade||"",roster:r.roster_pattern||"",type:r.employment_type||"",ute:r.ute||"",company:r.company||"",site:r.site||"",notes:r.notes||"",
+  active:r.status!=="left",status:CAP[r.status]||"Active",mondayStatus:r.monday_status||"",mondayId:r.monday_id||"",start:r.start_date||"",end:r.end_date||"",rosterNote:r.roster_note||"",email:r.email||"",phone:r.phone||"",homeBase:r.home_base||""});
+const staffOut=(id,s)=>({id,first_name:s.first,last_name:s.last,trade:nz(s.trade),roster_pattern:nz(s.roster),employment_type:nz(s.type),ute:nz(s.ute),company:nz(s.company),site:nz(s.site),notes:nz(s.notes),
+  status:s.active===false?"left":String(s.status||"Active").toLowerCase(),monday_status:nz(s.mondayStatus),monday_id:nz(s.mondayId),start_date:nz(s.start),end_date:nz(s.end),roster_note:nz(s.rosterNote),email:nz(s.email),phone:nz(s.phone),home_base:nz(s.homeBase)});
+const clientIn=r=>({name:r.name,xeroId:r.xero_contact_id||"",legendCompany:r.legend_company||"",prefix:r.item_prefix||"",active:r.active,lastInvoiced:r.last_invoiced||""});
+const clientOut=(id,c)=>({id,name:c.name,xero_contact_id:nz(c.xeroId),legend_company:nz(c.legendCompany),item_prefix:nz(c.prefix),active:c.active!==false,last_invoiced:nz(c.lastInvoiced)});
+const itemIn=r=>({code:r.code,desc:r.description,unit:r.unit,price:+r.price,min:r.min_billed==null?null:+r.min_billed,max:r.max_billed==null?null:+r.max_billed,client:r.client_prefix,source:r.source||""});
+const itemOut=i=>({code:i.code,description:i.desc||i.code,unit:i.unit||"hr",price:+i.price||0,min_billed:i.min??null,max_billed:i.max??null,client_prefix:i.client||"GENERIC",source:nz(i.source)});
+const legIn=r=>({c:r.code,d:r.description,co:r.company||"",cat:r.category,col:r.colour||""});
+const SRC_IN={plan:"plan",proj:"proj"};
+const cellIn=r=>{const c={}; if(r.code)c.c=r.code; if(r.hours)c.h=r.hours; if(r.km)c.k=r.km; if(r.asset)c.a=r.asset; if(SRC_IN[r.source])c.p=SRC_IN[r.source]; return c};
+function sbErr(e){ const m=(e&&(e.message||e.code))||""; if(/row-level security|permission|42501/i.test(m)){const x=new Error(m);x.code="denied";return x} return e }
+async function sbq(p){ const {data,error}=await p; if(error)throw sbErr(error); return data }
+async function fetchAll(table,cols,order){ let out=[],from=0; for(;;){ const rows=await sbq(sb.from(table).select(cols).order(order[0]).order(order[1]||order[0]).range(from,from+999)); out=out.concat(rows); if(rows.length<1000)break; from+=1000 } return out }
+
+/* ---------------- writes ---------------- */
+const chains={};
+function queue(path,fn){ const p=(chains[path]||Promise.resolve()).then(fn).catch(e=>{console.error(e);toast(errMsg(e),true);throw e}); chains[path]=p.catch(()=>{}); return p }
+function putLocalCell(sid,d,c){ const wk=monday(d); const w=(S.weeks[wk]??={cells:{}}); const m=(w.cells[sid]??={}); if(c)m[d]=c; else delete m[d] }
+function writeCells(sid,changes){ // changes: {date: cell|null}
+  const ups=[],dels=[];
+  Object.entries(changes).forEach(([d,c])=>{ if(c&&(c.c||c.h||c.k||c.a)){ ups.push({staff_id:sid,day:d,code:nz(c.c),hours:nz(c.h),km:nz(c.k),asset:nz(c.a),source:c.p==="plan"?"plan":c.p==="proj"?"proj":"confirmed",updated_by:ME&&ME.id}) } else dels.push(d) });
+  return queue("roster/"+sid,async()=>{
+    if(ups.length) await sbq(sb.from("roster_cells").upsert(ups,{onConflict:"staff_id,day"}));
+    if(dels.length) await sbq(sb.from("roster_cells").delete().eq("staff_id",sid).in("day",dels));
+    Object.entries(changes).forEach(([d,c])=>putLocalCell(sid,d,c&&(c.c||c.h||c.k||c.a)?c:null)); scheduleRender();
+  });
+}
+async function saveLegend(codes){
+  const rows=codes.map((x,i)=>({code:String(x.c).trim(),description:x.d||x.c,company:nz(x.co),category:x.cat||"Other",colour:nz(x.col),sort_order:i}));
+  await sbq(sb.from("legend_codes").upsert(rows,{onConflict:"code"}));
+  const keep=new Set(rows.map(r=>r.code)); const gone=S.legend.map(x=>x.c).filter(c=>!keep.has(c));
+  if(gone.length) await sbq(sb.from("legend_codes").delete().in("code",gone));
+  S.legend=codes.slice(); S.L=new Map(S.legend.map(x=>[String(x.c).toUpperCase(),x]));
+}
+function saveDoc(path,data){ const [col,id]=path.split("/"); return queue(path,async()=>{
+  if(col==="config"){ await saveLegend(data.codes) }
+  else if(col==="staff"){ await sbq(sb.from("staff").upsert(staffOut(id,data))); S.staff[id]=data }
+  else if(col==="assets"){ await sbq(sb.from("assets").upsert({id,name:data.name,type:data.type||"Ute",notes:nz(data.notes)})); S.assets[id]=data }
+  else if(col==="clients"){ await sbq(sb.from("clients").upsert(clientOut(id,data))); S.clients[id]=data }
+  else if(col==="items"){ await sbq(sb.from("rate_items").upsert(itemOut(data),{onConflict:"code"})); S.items[id]=data }
+  else if(col==="quotes"){ throw Object.assign(new Error("quotes"),{code:"later"}) }
+  scheduleRender() }) }
+function patchDoc(path,data){ const [col,id]=path.split("/"); const cur=(col==="items"?S.items:col==="staff"?S.staff:col==="assets"?S.assets:S.clients)[id]||{}; return saveDoc(path,{...cur,...data}) }
+function delDoc(path){ const [col,id]=path.split("/"); return queue(path,async()=>{
+  if(col==="items"){ const it=S.items[id]; if(it) await sbq(sb.from("rate_items").delete().eq("code",it.code)); delete S.items[id] }
+  else if(col==="assets"){ await sbq(sb.from("assets").delete().eq("id",id)); delete S.assets[id] }
+  else if(col==="clients"){ await sbq(sb.from("clients").delete().eq("id",id)); delete S.clients[id] }
+  else if(col==="staff"){ await sbq(sb.from("staff").delete().eq("id",id)); delete S.staff[id] }
+  scheduleRender() }) }
+
+
+/* ---------------- dialog ---------------- */
+const dlg=$("#dlg");
+function openDlg(html,wide){ dlg.className=wide?"wide":""; dlg.innerHTML=html; if(!dlg.open)dlg.showModal(); const f=$("[autofocus]",dlg); f&&f.focus() }
+function closeDlg(){ if(dlg.open)dlg.close(); dlg.innerHTML="" }
+dlg.addEventListener("click",e=>{ if(e.target===dlg)closeDlg(); if(e.target.closest("[data-close]"))closeDlg() });
+dlg.addEventListener("close",()=>{ dlg.innerHTML=""; scheduleRender() });
+function dh(title,sub){return `<div class="dh"><div class="stack" style="gap:2px;min-width:0"><h2>${esc(title)}</h2>${sub?`<span class="muted small">${esc(sub)}</span>`:""}</div><span class="spacer"></span><button class="icon ghost" data-close aria-label="Close">✕</button></div>`}
+function inlineConfirm(btn,label,onYes){ const host=btn.parentElement; const box=document.createElement("div"); box.className="confirm";
+  box.innerHTML=`<span>${esc(label)}</span><button class="danger" data-yes>Delete</button><button data-no>Keep</button>`; btn.hidden=true; host.prepend(box);
+  box.querySelector("[data-no]").onclick=()=>{box.remove();btn.hidden=false}; box.querySelector("[data-yes]").onclick=onYes }
+
+/* ---------------- render scheduling ---------------- */
+let rq=0; function scheduleRender(){ if(rq)return; rq=requestAnimationFrame(()=>{rq=0;render()}) }
+function setView(v){ S.view=v; $$("#tabs a").forEach(a=>a.setAttribute("aria-current",a.dataset.v===v?"page":"false")); scheduleRender() }
+window.addEventListener("hashchange",()=>{const v=location.hash.slice(1); if(VIEWS.includes(v))setView(v)});
+
+function render(){
+  const main=$("#main");
+  if(!db){ return }
+  if(!S.loaded.has("staff")||!S.loaded.has("legend")||!S.week){ main.innerHTML=`<div class="empty-state">Loading roster, staff and Xero rates…</div>`; return }
+  const sx=main.querySelector(".gridframe"), keep=sx?{l:sx.scrollLeft,t:sx.scrollTop}:null; const wy=window.scrollY;
+  const active=document.activeElement&&main.contains(document.activeElement)?document.activeElement.id:null;
+  ({roster:renderRoster,mob:renderMob,people:renderPeople,assets:renderAssets,quotes:renderQuotes,rates:renderRates,legend:renderLegend})[S.view](main);
+  fitGrid();
+  const nx=main.querySelector(".gridframe"); if(nx&&keep){nx.scrollLeft=keep.l;nx.scrollTop=keep.t}
+  if(!(LAND&&LAND.matches&&S.view==="roster"))window.scrollTo(0,wy); if(active){const el=document.getElementById(active); if(el){el.focus(); if(el.setSelectionRange&&el.type!=="date"&&el.type!=="number"){try{const n=el.value.length;el.setSelectionRange(n,n)}catch(_){}}}}
+}
+
+/* ================= ROSTER ================= */
+const FY_END="2027-06-30";
+function isOnb(s){ return s.status==="Onboarding" }
+function staffMatches(s){ const q=S.q.trim().toLowerCase();
+  return (!S.co||(s.company||"Unassigned")===S.co) && (!q||[staffName(s),s.trade,s.company,s.site,s.ute,s.status].join(" ").toLowerCase().includes(q)) }
+function visibleStaff(){
+  return Object.entries(S.staff).filter(([id,s])=>s.active!==false&&!isOnb(s)).filter(([,s])=>staffMatches(s))
+   .sort((a,b)=>staffName(a[1]).localeCompare(staffName(b[1])));
+}
+function onboardingStaff(){
+  return Object.entries(S.staff).filter(([id,s])=>s.active!==false&&isOnb(s)).filter(([,s])=>!S.co&&staffMatches(s)||S.co==="Onboarding")
+   .sort((a,b)=>(a[1].start||"9999").localeCompare(b[1].start||"9999")||staffName(a[1]).localeCompare(staffName(b[1])));
+}
+function rangeDates(){ const out=[]; if(S.span==="fy"){ let d=S.week; while(d<=FY_END){out.push(d);d=addD(d,1)} return out }
+  for(let i=0;i<S.span;i++)out.push(addD(S.week,i)); return out }
+function computeFlags(dates,list){
+  const flags=[], rowFlag=new Set(), cellFlag=new Set();
+  dates.forEach(d=>{ const use={};
+    list.forEach(([sid,s])=>{ const c=cellOf(sid,d); const code=c&&c.c; if(!isWorking(code))return; const an=(c&&c.a)||s.ute; if(!an||an==="NO")return; (use[an.toUpperCase()]??=[]).push(sid) });
+    Object.entries(use).forEach(([a,ids])=>{ if(ids.length>1){ const proj=ids.every(i=>cellOf(i,d)?.p==="proj"); flags.push({t:proj?"warn":"crit",d,msg:`${a} booked for ${ids.map(i=>staffName(S.staff[i])).join(" and ")}${proj?" (projected)":""}`,sid:ids[0]}); ids.forEach(i=>{rowFlag.add(i);cellFlag.add(i+"|"+d)}) } });
+  });
+  list.forEach(([sid,s])=>{ let any=false;
+    dates.forEach(d=>{ const c=cellOf(sid,d); if(!c)return; if(c.c||c.h)any=true; const code=(c.c||"").toUpperCase();
+      if(code&&!lg(code)){flags.push({t:"warn",d,sid,msg:`${staffName(s)}: “${c.c}” isn't in the legend`});cellFlag.add(sid+"|"+d);rowFlag.add(sid)}
+      if(ATTN.has(code)||ATTN.has(String(c.k||"").toUpperCase())||ATTN.has(String(c.h||"").toUpperCase())){flags.push({t:"warn",d,sid,msg:`${staffName(s)}: ${code||c.k||c.h} needs follow-up`});cellFlag.add(sid+"|"+d);rowFlag.add(sid)}
+      if(hrs(c.h)>0&&code&&!isWorking(code)&&!lg(code)?.cat?.includes("Travel")){flags.push({t:"warn",d,sid,msg:`${staffName(s)}: ${c.h} hrs entered on a ${code} day`});cellFlag.add(sid+"|"+d);rowFlag.add(sid)}
+    });
+    if(!any&&!isOnb(s)){flags.push({t:"warn",d:dates[0],sid,msg:`${staffName(s)} has nothing rostered in this period${s.rosterNote?" — "+s.rosterNote:""}`});rowFlag.add(sid)}
+  });
+  flags.sort((a,b)=>(a.t===b.t?0:a.t==="crit"?-1:1)||a.d.localeCompare(b.d));
+  return {flags,rowFlag,cellFlag};
+}
+const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function cellHtml(sid,s,d,cellFlag){
+  const c=cellOf(sid,d)||{}; const e=lg(c.c);
+  const bg=e?e.col:(c.c?"var(--sunk)":"transparent"); const fg=e?ink(e.col):"inherit";
+  const mon=(pd(d).getDay()===1)?" wk":"";
+  const cls=(c.c||c.h?"":"empty")+(cellFlag.has(sid+"|"+d)?" flag":"")+(c.p==="proj"?" pj":c.p==="plan"?" pl":"");
+  const tip=[c.c&&(c.c+(e?" — "+e.d+(e.co&&e.co!=="OEMX"?" ("+e.co+")":""):" — not in legend")),c.p==="proj"?"Projected from swing pattern":c.p==="plan"?"Planned on archived roster":"",c.h&&("Hours: "+c.h),c.k&&("Km / note: "+c.k),c.a&&("Asset: "+c.a)].filter(Boolean).join("\n");
+  return `<td class="cell${d===TODAY?" today":""}${mon}"><button class="cb ${cls}" data-cell="${sid}|${d}" style="background:${bg};color:${fg}" title="${esc(staffName(s)+" · "+DOW[(pd(d).getDay()+6)%7]+" "+fmtD(d)+"\n"+(tip||"Empty — tap to add"))}"><span class="c${(c.c||"").length>4?" lg":""}">${esc(c.c||(S.span==="fy"?"":"+"))}</span>${c.h?`<span class="h">${esc(c.h)}</span>`:""}${c.k?`<span class="k">${esc(String(c.k).slice(0,6))}</span>`:""}</button></td>`;
+}
+function rowHtml(sid,s,dates,rowFlag,cellFlag,onb){
+  let tot=0; dates.forEach(d=>tot+=hrs(cellOf(sid,d)?.h));
+  const meta=onb?[s.trade,s.start?"Starts "+fmtD(s.start)+" "+s.start.slice(0,4):"Start date TBC",s.mondayStatus].filter(Boolean).join(" · "):[s.trade,s.roster,s.ute&&s.ute!=="NO"?s.ute:""].filter(Boolean).join(" · ");
+  return `<tr class="${onb?"onb":""}" data-sid="${sid}"><td class="name"><div class="who" data-person="${sid}" title="${esc(staffName(s)+"\n"+meta+(s.rosterNote?"\n"+s.rosterNote:""))}"><span class="nm">${esc(staffName(s))}${rowFlag.has(sid)?'<span class="flagdot" title="Has flags"></span>':""}</span><span class="meta">${esc(meta)}</span></div></td>${dates.map(d=>cellHtml(sid,s,d,cellFlag)).join("")}<td class="tot">${tot?Math.round(tot*10)/10:""}</td></tr>`;
+}
+function openFlags(flags){
+  openDlg(`${dh("Flags to check",flags.length+" in this period")}<div class="db">${flags.length?`<ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px">${flags.slice(0,150).map(f=>`<li><span class="chip ${f.t}">${f.t==="crit"?"Clash":"Check"}</span> <span class="small muted">${DOW[(pd(f.d).getDay()+6)%7]} ${fmtD(f.d)}</span> ${esc(f.msg)}</li>`).join("")}</ul>`:`<p class="muted">Nothing to check for this period.</p>`}</div><div class="df"><button data-close>Close</button></div>`);
+}
+const LAND=window.matchMedia?window.matchMedia("(orientation: landscape) and (max-height: 540px)"):null;
+function fitGrid(){
+  const g=document.getElementById("gf"); if(!g)return;
+  if(LAND&&LAND.matches){ window.scrollTo(0,0); const top=g.getBoundingClientRect().top; g.style.height=Math.max(160,window.innerHeight-top-6)+"px"; g.style.maxHeight="none" }
+  else { g.style.height=""; g.style.maxHeight="" }
+}
+window.addEventListener("resize",()=>{ clearTimeout(fitGrid._t); fitGrid._t=setTimeout(fitGrid,120) });
+window.addEventListener("orientationchange",()=>setTimeout(fitGrid,250));
+function renderRoster(main){
+  const dates=rangeDates(), list=visibleStaff(), onbList=onboardingStaff(), {flags,rowFlag,cellFlag}=computeFlags(dates,list);
+  const fy=S.span==="fy", today=dates.includes(TODAY)?TODAY:null;
+  let onsite=0, totalH=0, projDays=0; const byCo={};
+  list.forEach(([sid,s])=>{ if(today&&isOnSite(cellOf(sid,today)?.c))onsite++; dates.forEach(d=>{const c=cellOf(sid,d); const h=hrs(c?.h); totalH+=h; if(c?.p==="proj"&&isOnSite(c.c))projDays++; if(h){const k=s.company||"Unassigned"; byCo[k]=(byCo[k]||0)+h}}) });
+  const cos=companies();
+  const groups={};
+  list.forEach(e=>{ const k=S.group==="company"?(e[1].company||"Unassigned"):S.group==="site"?(e[1].site||"No site"):"All staff"; (groups[k]??=[]).push(e) });
+  const gkeys=Object.keys(groups).sort((a,b)=>{const w=x=>/^(OEMX|Unassigned|No site|TBC)$/.test(x)?1:0; return w(a)-w(b)||a.localeCompare(b)});
+  const end=dates[dates.length-1];
+  const label=fy?`${fmtD(S.week)} ${S.week.slice(0,4)} – 30 Jun 2027`:S.span===7?"WE "+fmtD(end):fmtD(S.week)+" – "+fmtD(end);
+  // month header
+  const months=[]; dates.forEach(d=>{const k=d.slice(0,7); const l=months[months.length-1]; if(l&&l.k===k)l.n++; else months.push({k,n:1})});
+  let h=`<div class="toolbar">
+    <button class="icon" id="prev" aria-label="Back one week">‹</button>
+    <span class="wk">${label}</span>
+    <button class="icon" id="next" aria-label="Forward one week">›</button>
+    <button id="thisweek" ${S.week===monday(TODAY)?"disabled":""}>This week</button>
+    <div class="seg" role="group" aria-label="Span"><button data-span="7" aria-pressed="${S.span===7}">Week</button><button data-span="14" aria-pressed="${S.span===14}">Fortnight</button><button data-span="28" aria-pressed="${S.span===28}">4 weeks</button><button data-span="fy" aria-pressed="${fy}">Rest of FY</button></div>
+    <button id="landflags" class="landonly ${flags.some(f=>f.t==="crit")?"danger":""}">${flags.length} flags</button>
+    <button id="landfilter" class="landonly" aria-expanded="${!!S.landFilters}">Filters${S.q||S.co?" •":""}</button>
+    <span class="spacer"></span>
+    <button id="undo" title="Undo">↶ Undo</button>
+    <button id="clrahead">Clear ahead</button>
+    <button id="swing">Roster builder</button>
+    <button id="exportcsv">Export (CSV)</button>
+  </div>
+  <div class="toolbar ${S.landFilters?"open":""}" id="tb2">
+    <input type="search" id="rq" placeholder="Search name, trade, site, ute" value="${esc(S.q)}" aria-label="Search staff">
+    <select id="rco" aria-label="Company"><option value="">All companies</option>${cos.concat(["Unassigned","Onboarding"]).map(c=>`<option ${S.co===c?"selected":""}>${esc(c)}</option>`).join("")}</select>
+    <select id="rgroup" aria-label="Group by"><option value="company" ${S.group==="company"?"selected":""}>Group by company</option><option value="site" ${S.group==="site"?"selected":""}>Group by site</option><option value="none" ${S.group==="none"?"selected":""}>No grouping</option></select>
+    <label class="row small" style="gap:6px"><input type="checkbox" id="rproj" ${S.showProj!==false?"checked":""} style="width:auto;min-height:0"> Show projected</label>
+  </div>
+  <div class="summary">
+    <div class="stat"><b class="num">${list.length}</b><span>Active staff</span></div>
+    <div class="stat"><b class="num">${onbList.length}</b><span>Onboarding</span></div>
+    <div class="stat"><b class="num">${today?onsite:"–"}</b><span>${today?"On client site today":"On site (other period)"}</span></div>
+    <div class="stat"><b class="num">${fy?projDays.toLocaleString():Math.round(totalH*10)/10}</b><span>${fy?"Projected site days":"Hours entered"}</span></div>
+    <div class="stat ${flags.some(f=>f.t==="crit")?"alert":""}" style="cursor:pointer" id="flagstat"><b class="num">${flags.length}</b><span>Flags to check ${S.showFlags?"▲":"▼"}</span></div>
+  </div>
+  ${!fy&&Object.keys(byCo).length?`<div class="byco" style="margin:-4px 0 12px">${Object.entries(byCo).sort((a,b)=>b[1]-a[1]).map(([c,v])=>`<span class="chip">${esc(c)} <span class="num">${Math.round(v*10)/10} h</span></span>`).join("")}</div>`:""}
+  ${S.showFlags?`<div class="panel flags" style="margin-bottom:12px"><h3>Flags</h3>${flags.length?`<ul>${flags.slice(0,120).map(f=>`<li><span class="chip ${f.t}">${f.t==="crit"?"Clash":"Check"}</span> <span class="small muted">${DOW[(pd(f.d).getDay()+6)%7]} ${fmtD(f.d)}</span> ${esc(f.msg)}</li>`).join("")}</ul>${flags.length>120?`<p class="small muted">Showing the first 120 of ${flags.length}. Narrow the period or company to see the rest.</p>`:""}`:`<p class="muted">Nothing to check for this period.</p>`}</div>`:""}
+  ${(()=>{try{return localStorage.getItem("lh-rotate-hint")==="0"}catch(_){return false}})()?"":`<div class="rotate-hint" id="rhint"><span class="ico" aria-hidden="true">📱</span><span>Turn your phone sideways to see more days.</span><button type="button" id="rhintx">Got it</button></div>`}
+  <div class="gridframe ${S.showProj===false?"showproj-off":""}" id="gf"><div class="gwrap"><table class="ros ${fy?"fy":S.span>7?"span14":""}"><thead>
+    <tr class="months"><th class="name">Staff</th>${months.map(m=>`<th colspan="${m.n}">${m.n>=3?MON[+m.k.slice(5)-1]+" "+m.k.slice(0,4):""}</th>`).join("")}<th></th></tr>
+    <tr class="days"><th class="name"></th>${dates.map(d=>`<th class="${d===TODAY?"today":""}${pd(d).getDay()===1?" wk":""}">${fy?DOW[(pd(d).getDay()+6)%7].slice(0,2):DOW[(pd(d).getDay()+6)%7]}<br><span class="num">${pd(d).getDate()}</span></th>`).join("")}<th>Hrs</th></tr></thead><tbody>`;
+  if(!list.length&&!onbList.length) h+=`<tr><td colspan="${dates.length+2}"><div class="empty-state">No staff match. Clear the search or add people on the People tab.</div></td></tr>`;
+  gkeys.forEach(g=>{
+    const rows=groups[g];
+    if(S.group!=="none") h+=`<tr class="grp"><td colspan="${dates.length+2}"><span class="stick">${esc(g)} <span class="muted">· ${rows.length} staff</span></span></td></tr>`;
+    rows.forEach(([sid,s])=>{ h+=rowHtml(sid,s,dates,rowFlag,cellFlag,false) });
+  });
+  if(onbList.length){
+    h+=`<tr class="onbline"><td colspan="${dates.length+2}"><span class="stick">Onboarding <span class="muted">· ${onbList.length} from monday.com · not yet rostered to a client</span></span></td></tr>`;
+    onbList.forEach(([sid,s])=>{ h+=rowHtml(sid,s,dates,rowFlag,cellFlag,true) });
+  }
+  h+=`</tbody></table><div id="selbox" hidden><span class="fillh" title="Drag to extend"></span></div><div id="fillbox" hidden></div></div></div>
+  <div id="selbar" hidden><span id="selinfo" class="small"></span><span class="spacer"></span><button type="button" data-act="edit">Edit</button><button type="button" data-act="copy">Copy</button><button type="button" data-act="paste">Paste</button><button type="button" data-act="clear">Clear</button><button type="button" data-act="ahead">Clear ahead…</button><button type="button" data-act="undo">Undo</button><button type="button" data-act="done" aria-label="Close selection">✕</button></div>
+  <div class="keyrow"><span><span class="sw"></span>Confirmed / actual</span><span><span class="sw pl"></span>Planned on archived roster</span><span><span class="sw pj"></span>Projected from swing pattern</span><span><span class="rdot"></span>Red dot = something to check (ute double-booked, code not in legend, TBC/REVIEW/ACC/MED?/LR/STBY follow-up, or hours on a day off). A dot beside a name means that person has a flag or nothing rostered in this period.</span><span>Click a cell to select it · drag across cells to select a range · drag the small square to extend · Ctrl+C / Ctrl+V to copy and paste · Delete to clear · Ctrl+Z to undo · double-click (or tap a selected cell) to edit.</span></div>`;
+  main.innerHTML=h;
+  const mrow=main.querySelector("tr.months th:not(.name)"); if(mrow)main.querySelector("table.ros").style.setProperty("--mh",mrow.getBoundingClientRect().height+"px");
+  $("#prev").onclick=()=>{S.week=addD(S.week,-7);render()}; $("#next").onclick=()=>{ const n=addD(S.week,7); if(n<=FY_END){S.week=n;render()} };
+  $("#thisweek").onclick=()=>{S.week=monday(TODAY);render()};
+  $$("[data-span]").forEach(b=>b.onclick=()=>{S.span=b.dataset.span==="fy"?"fy":+b.dataset.span; try{localStorage.setItem("lh-span",String(S.span))}catch(_){} render()});
+  $("#rq").oninput=e=>{S.q=e.target.value;render()}; $("#rco").onchange=e=>{S.co=e.target.value;render()}; $("#rgroup").onchange=e=>{S.group=e.target.value;render()};
+  $("#rproj").onchange=e=>{S.showProj=e.target.checked; $("#gf").classList.toggle("showproj-off",!S.showProj)};
+  $("#flagstat").onclick=()=>{S.showFlags=!S.showFlags;render()};
+  $("#landflags").onclick=()=>openFlags(flags);
+  $("#landfilter").onclick=()=>{ S.landFilters=!S.landFilters; $("#tb2").classList.toggle("open",S.landFilters); $("#landfilter").setAttribute("aria-expanded",S.landFilters); fitGrid() };
+  const rx=$("#rhintx"); if(rx)rx.onclick=()=>{ try{localStorage.setItem("lh-rotate-hint","0")}catch(_){} $("#rhint").remove(); fitGrid() };
+  $("#swing").onclick=()=>openBuilder(S.sel?[...new Set(gridRows().slice(selRect()?.r0??0,(selRect()?.r1??-1)+1))]:null); $("#clrahead").onclick=()=>openClear(S.sel&&S.sel.a.sid,S.sel&&S.sel.a.d); $("#undo").onclick=undoLast; $("#exportcsv").onclick=exportWeekCsv;
+  $("#gf").onclick=e=>{ const p=e.target.closest("[data-person]"); if(p)openPerson(p.dataset.person) };
+  S._dates=dates; wireGrid();
+}
+function legendOptions(){ return S.legend.map(x=>`<option value="${esc(x.c)}">${esc(x.d+(x.co&&x.co!=="OEMX"?" · "+x.co:""))}</option>`).join("") }
+function assetOptions(sel){ return `<option value="">Default (${"staff ute"})</option>`+Object.values(S.assets).sort((a,b)=>(a.name||"").localeCompare(b.name||"")).map(a=>`<option ${sel===a.name?"selected":""}>${esc(a.name)}</option>`).join("") }
+function openCell(sid,d){
+  const s=S.staff[sid]; const c=cellOf(sid,d)||{};
+  const siteCodes=S.legend.filter(x=>x.cat==="Client site"&&s.company&&x.co.toUpperCase()===String(s.company).toUpperCase()).map(x=>x.c);
+  const quick=Array.from(new Set([...siteCodes.slice(0,4),"R","FIA","FOA","DIA","DOA","AL","SL","TBC"]));
+  openDlg(`${dh(staffName(s),DOW[(pd(d).getDay()+6)%7]+" "+fmtD(d)+" · "+[s.trade,s.company,s.ute].filter(Boolean).join(" · "))}
+  <form class="db" id="cf">
+    <label class="f">Code<input id="cc" list="codes" value="${esc(c.c||"")}" autocomplete="off" autofocus placeholder="e.g. IB, FIA, R"><datalist id="codes">${legendOptions()}</datalist></label>
+    <div class="desc" id="cdesc"></div>
+    <div class="quick">${quick.map(q=>{const e=lg(q);return `<button type="button" data-q="${esc(q)}" style="background:${e?e.col:"var(--sunk)"};color:${e?ink(e.col):"inherit"};border-color:transparent">${esc(q)}</button>`}).join("")}</div>
+    <div class="grid2">
+      <label class="f">Hours<span class="hint">e.g. 12, 4+8, D or N</span><input id="ch" value="${esc(c.h||"")}" inputmode="decimal"></label>
+      <label class="f">Km or 2nd code<span class="hint">e.g. 462, LWP, AC</span><input id="ck" value="${esc(c.k||"")}"></label>
+      <label class="f">Asset<span class="hint">Leave on default to use ${esc(s.ute||"their ute")}</span><select id="ca">${assetOptions(c.a)}</select></label>
+      <label class="f">Apply to<span class="hint">Copies this entry forward</span><select id="cr"><option value="1">This day only</option><option value="sun">Through Sunday</option><option value="7">Next 7 days</option><option value="14">Next 14 days</option></select></label>
+    </div>
+  </form>
+  <div class="df"><button type="button" class="danger" id="cclear" ${c.c||c.h||c.k?"":"disabled"}>Clear day</button><button type="button" id="cahead">Clear from here on…</button><span class="spacer"></span><button type="button" data-close>Cancel</button><button type="submit" form="cf" class="primary">Save</button></div>`);
+  const showDesc=()=>{const v=$("#cc",dlg).value; const e=lg(v); $("#cdesc",dlg).textContent=v?(e?`${e.d}${e.co&&e.co!=="OEMX"?" · "+e.co:""} · ${e.cat}`:"Not in the legend. It will be saved and flagged."):""};
+  $("#cc",dlg).oninput=showDesc; showDesc();
+  $$("[data-q]",dlg).forEach(b=>b.onclick=()=>{$("#cc",dlg).value=b.dataset.q;showDesc()});
+  $("#cclear",dlg).onclick=()=>{ closeDlg(); applyChanges({[sid]:{[d]:null}},"Cleared") };
+  $("#cahead",dlg).onclick=()=>openClear(sid,d);
+  $("#cf",dlg).onsubmit=ev=>{ ev.preventDefault();
+    const code=$("#cc",dlg).value.trim(); const e=lg(code);
+    const cell={}; if(code)cell.c=e?e.c:code.toUpperCase(); const hv=$("#ch",dlg).value.trim(); if(hv)cell.h=hv; const kv=$("#ck",dlg).value.trim(); if(kv)cell.k=kv; const av=$("#ca",dlg).value; if(av)cell.a=av;
+    const r=$("#cr",dlg).value; let n=r==="sun"?7-((pd(d).getDay()+6)%7):+r; const ch={};
+    for(let i=0;i<n;i++)ch[addD(d,i)]=Object.keys(cell).length?{...cell}:null;
+    writeCells(sid,ch).then(()=>toast(n>1?`Saved ${n} days`:"Saved")); closeDlg() };
+}
+function parsePattern(p){ const m=/(\d+)\s*[&\/]\s*(\d+)/.exec(p||""); if(!m)return [14,7]; let a=+m[1],b=+m[2]; if(a<=6&&b<=6){a*=7;b*=7} return [a,b] }
+function swingCount(st,on,off){ const v=$("#sc",dlg).value; if(v!=="fy")return +v||1; if(!st||!(on+off))return 1; return Math.max(1,Math.ceil(((pd(FY_END)-pd(st))/864e5+1)/(on+off))) }
+/* ================= ROSTER: select, drag-fill, copy/paste, undo ================= */
+const UNDO=[];
+function cleanCell(c){ if(!c)return null; const o={}; ["c","h","k","a"].forEach(k=>{if(c[k])o[k]=c[k]}); return Object.keys(o).length?o:null }
+function sameCell(a,b){ a=cleanCell(a);b=cleanCell(b); return JSON.stringify(a)===JSON.stringify(b) }
+function applyChanges(bySid,label){
+  // bySid: {sid:{date:cell|null}}; records undo, skips no-op writes and days past 30 Jun 2027
+  const undo={}; let n=0; const jobs=[];
+  Object.entries(bySid).forEach(([sid,ch])=>{ const real={};
+    Object.entries(ch).forEach(([d,c])=>{ if(d>FY_END)return; const prev=cellOf(sid,d); if(sameCell(prev,c)&&!(prev&&prev.p&&c))return; real[d]=c; (undo[sid]??={})[d]=prev?{...prev}:null; n++ });
+    if(Object.keys(real).length)jobs.push(writeCells(sid,real)) });
+  if(!n){ toast("Nothing to change"); return Promise.resolve(0) }
+  UNDO.push({label,undo}); if(UNDO.length>30)UNDO.shift(); updUndo();
+  return Promise.all(jobs).then(()=>{ toast(`${label}: ${n} day${n===1?"":"s"}`); return n });
+}
+function undoLast(){ const u=UNDO.pop(); updUndo(); if(!u){toast("Nothing to undo");return}
+  Promise.all(Object.entries(u.undo).map(([sid,ch])=>writeCells(sid,ch))).then(()=>toast("Undone: "+u.label)) }
+function updUndo(){ const b=$("#undo"); if(b){ b.disabled=!UNDO.length; b.title=UNDO.length?"Undo "+UNDO[UNDO.length-1].label:"Nothing to undo" } const m=$("#selbar [data-act=undo]"); if(m)m.disabled=!UNDO.length }
+
+function gridRows(){ return $$("#gf tbody tr[data-sid]").map(tr=>tr.dataset.sid) }
+function selRect(){ const s=S.sel; if(!s)return null; const rows=gridRows(), dates=S._dates||[];
+  const ra=rows.indexOf(s.a.sid), rf=rows.indexOf(s.f.sid), ca=dates.indexOf(s.a.d), cf=dates.indexOf(s.f.d);
+  if(ra<0||rf<0||ca<0||cf<0)return null; return {r0:Math.min(ra,rf),r1:Math.max(ra,rf),c0:Math.min(ca,cf),c1:Math.max(ca,cf),rows,dates} }
+function tdAt(r,c){ const tr=$$("#gf tbody tr[data-sid]")[r]; return tr?tr.cells[c+1]:null }
+function boxFor(r0,c0,r1,c1){ const a=tdAt(r0,c0), b=tdAt(r1,c1); if(!a||!b)return null; const t=a.closest("table");
+  return {left:t.offsetLeft+a.offsetLeft,top:t.offsetTop+a.offsetTop,width:b.offsetLeft+b.offsetWidth-a.offsetLeft,height:b.offsetTop+b.offsetHeight-a.offsetTop} }
+function place(el,bx){ if(!el)return; if(!bx){el.hidden=true;return} el.hidden=false; Object.assign(el.style,{left:bx.left+"px",top:bx.top+"px",width:bx.width+"px",height:bx.height+"px"}) }
+function drawSel(){ const R=selRect(); place($("#selbox"),R&&boxFor(R.r0,R.c0,R.r1,R.c1)); const bar=$("#selbar");
+  if(bar){ bar.hidden=!R; if(R){ const n=(R.r1-R.r0+1)*(R.c1-R.c0+1); $("#selinfo").textContent=n===1?`${staffName(S.staff[R.rows[R.r0]])} · ${fmtD(R.dates[R.c0])}`:`${R.r1-R.r0+1} people × ${R.c1-R.c0+1} days`; $("#selbar [data-act=paste]").disabled=!S.clip } } }
+function setSel(a,f){ S.sel=a?{a,f:f||a}:null; drawSel() }
+function cellKey(el){ const b=el&&el.closest&&el.closest("[data-cell]"); if(!b)return null; const [sid,d]=b.dataset.cell.split("|"); return {sid,d} }
+function rangeCells(R){ const out=[]; for(let r=R.r0;r<=R.r1;r++){ const row=[]; for(let c=R.c0;c<=R.c1;c++)row.push(cleanCell(cellOf(R.rows[r],R.dates[c]))); out.push(row) } return out }
+function copySel(cut){ const R=selRect(); if(!R)return null; const data=rangeCells(R);
+  S.clip={data,tsv:data.map(r=>r.map(c=>c?c.c||"":"").join("\t")).join("\n")}; drawSel();
+  if(cut)clearSel("Cut"); else toast(`Copied ${data.length*data[0].length} cell${data.length*data[0].length===1?"":"s"}`); return S.clip.tsv }
+function clearSel(label){ const R=selRect(); if(!R)return; const ch={};
+  for(let r=R.r0;r<=R.r1;r++)for(let c=R.c0;c<=R.c1;c++)(ch[R.rows[r]]??={})[R.dates[c]]=null;
+  applyChanges(ch,label||"Cleared") }
+function pasteClip(clip){ clip=clip||S.clip; const R=selRect(); if(!R||!clip)return; const h=clip.data.length, w=clip.data[0].length;
+  // Paste fills the selection (tiling the copied block) when the selection is bigger than the copy; otherwise pastes the copied block once
+  const H=Math.max(h,R.r1-R.r0+1), W=Math.max(w,R.c1-R.c0+1); const ch={};
+  for(let i=0;i<H;i++){ const r=R.r0+i; if(r>=R.rows.length)break; for(let j=0;j<W;j++){ const c=R.c0+j; if(c>=R.dates.length)break; const v=clip.data[i%h][j%w]; (ch[R.rows[r]]??={})[R.dates[c]]=v?{...v}:null } }
+  applyChanges(ch,"Pasted").then(()=>{ S.sel={a:{sid:R.rows[R.r0],d:R.dates[R.c0]},f:{sid:R.rows[Math.min(R.r0+H-1,R.rows.length-1)],d:R.dates[Math.min(R.c0+W-1,R.dates.length-1)]}}; drawSel() }) }
+function parseTsv(t){ const rows=t.replace(/\r/g,"").replace(/\n$/,"").split("\n").map(l=>l.split("\t").map(v=>{v=v.trim(); if(!v)return null; const e=lg(v); return {c:e?e.c:v.toUpperCase()}})); const w=Math.max(...rows.map(r=>r.length)); rows.forEach(r=>{while(r.length<w)r.push(null)}); return {data:rows,tsv:t} }
+function fillTo(R,tr,tc){
+  // Excel-style fill: repeats the selected block across (left/right) or down/up to the target cell
+  const dx=tc<R.c0?R.c0-tc:tc>R.c1?tc-R.c1:0, dy=tr<R.r0?R.r0-tr:tr>R.r1?tr-R.r1:0;
+  if(!dx&&!dy)return null; const src=rangeCells(R), h=src.length, w=src[0].length; const ch={}; let D;
+  const mod=(a,n)=>((a%n)+n)%n;
+  if(dx>=dy){ const c0=Math.min(tc,R.c0), c1=Math.max(tc,R.c1); D={r0:R.r0,r1:R.r1,c0,c1};
+    for(let r=R.r0;r<=R.r1;r++)for(let c=c0;c<=c1;c++){ if(c>=R.c0&&c<=R.c1)continue; const v=src[r-R.r0][mod(c-R.c0,w)]; (ch[R.rows[r]]??={})[R.dates[c]]=v?{...v}:null } }
+  else{ const r0=Math.min(tr,R.r0), r1=Math.max(tr,R.r1); D={r0,r1,c0:R.c0,c1:R.c1};
+    for(let r=r0;r<=r1;r++){ if(r>=R.r0&&r<=R.r1)continue; for(let c=R.c0;c<=R.c1;c++){ const v=src[mod(r-R.r0,h)][c-R.c0]; (ch[R.rows[r]]??={})[R.dates[c]]=v?{...v}:null } } }
+  return {ch,D};
+}
+let G=null; // active drag
+function gridPointerDown(e){
+  const gf=$("#gf"); if(!gf)return;
+  if(e.target.closest(".fillh")){ const R=selRect(); if(!R)return; e.preventDefault(); G={mode:"fill",R,id:e.pointerId}; try{e.target.setPointerCapture(e.pointerId)}catch(_){} return }
+  const k=cellKey(e.target); if(!k)return;
+  const was=S.sel&&S.sel.a.sid===k.sid&&S.sel.a.d===k.d&&S.sel.f.sid===k.sid&&S.sel.f.d===k.d;
+  if(e.pointerType==="mouse"){ if(e.button!==0)return; e.preventDefault(); gf.focus({preventScroll:true});
+    if(e.shiftKey&&S.sel){ S.sel.f=k; drawSel(); G={mode:"sel",moved:true}; return }
+    setSel(k); G={mode:"sel",was,k,moved:false} }
+  else G={mode:"tap",was,k,x:e.clientX,y:e.clientY,moved:false};
+}
+function gridPointerMove(e){ if(!G)return;
+  if(G.mode==="tap"){ if(Math.hypot(e.clientX-G.x,e.clientY-G.y)>8)G.moved=true; return }
+  const el=document.elementFromPoint(e.clientX,e.clientY); const k=cellKey(el);
+  const gf=$("#gf"); if(gf){ const b=gf.getBoundingClientRect(); if(e.clientX>b.right-30)gf.scrollLeft+=24; else if(e.clientX<b.left+150)gf.scrollLeft-=24; if(e.clientY>b.bottom-24)gf.scrollTop+=20; else if(e.clientY<b.top+60)gf.scrollTop-=20 }
+  if(!k)return;
+  if(G.mode==="sel"){ if(S.sel.f.sid!==k.sid||S.sel.f.d!==k.d){ S.sel.f=k; G.moved=true; drawSel() } }
+  else if(G.mode==="fill"){ const R=G.R, tr=R.rows.indexOf(k.sid), tc=R.dates.indexOf(k.d); if(tr<0||tc<0)return; const f=fillTo(R,tr,tc); G.f=f; place($("#fillbox"),f&&boxFor(f.D.r0,f.D.c0,f.D.r1,f.D.c1)) }
+}
+function gridPointerUp(){ if(!G)return; const g=G; G=null;
+  if(g.mode==="fill"){ place($("#fillbox"),null); if(g.f){ const D=g.f.D; applyChanges(g.f.ch,"Filled").then(()=>{ S.sel={a:{sid:g.R.rows[D.r0],d:g.R.dates[D.c0]},f:{sid:g.R.rows[D.r1],d:g.R.dates[D.c1]}}; drawSel() }) } return }
+  if(g.mode==="sel"&&!g.moved&&g.was)openCell(g.k.sid,g.k.d);
+  if(g.mode==="tap"&&!g.moved){ if(g.was)openCell(g.k.sid,g.k.d); else setSel(g.k) }
+}
+function gridKey(e){
+  if(S.view!=="roster"||dlg.open||!S.sel)return; if(/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName||""))return;
+  const mod=e.ctrlKey||e.metaKey, k=e.key;
+  if(mod&&k.toLowerCase()==="z"){ e.preventDefault(); undoLast(); return }
+  if(k==="Delete"||k==="Backspace"){ e.preventDefault(); clearSel(); return }
+  if(k==="Enter"||k==="F2"){ e.preventDefault(); openCell(S.sel.f.sid,S.sel.f.d); return }
+  if(k==="Escape"){ setSel(null); return }
+  const mv={ArrowLeft:[0,-1],ArrowRight:[0,1],ArrowUp:[-1,0],ArrowDown:[1,0]}[k]; if(!mv)return;
+  e.preventDefault(); const rows=gridRows(), dates=S._dates; const f=S.sel.f;
+  const r=Math.max(0,Math.min(rows.length-1,rows.indexOf(f.sid)+mv[0])), c=Math.max(0,Math.min(dates.length-1,dates.indexOf(f.d)+mv[1]));
+  const nk={sid:rows[r],d:dates[c]}; if(e.shiftKey){S.sel.f=nk;drawSel()} else setSel(nk);
+  const td=tdAt(r,c); td&&td.scrollIntoView({block:"nearest",inline:"nearest"});
+}
+document.addEventListener("keydown",gridKey);
+document.addEventListener("pointermove",gridPointerMove);
+document.addEventListener("pointerup",gridPointerUp);
+document.addEventListener("pointercancel",()=>{ if(G&&G.mode==="fill")place($("#fillbox"),null); G=null });
+document.addEventListener("copy",e=>{ if(S.view!=="roster"||dlg.open||!S.sel||/INPUT|TEXTAREA/.test(document.activeElement?.tagName||""))return; const t=copySel(false); if(t!=null){e.clipboardData.setData("text/plain",t);e.preventDefault()} });
+document.addEventListener("cut",e=>{ if(S.view!=="roster"||dlg.open||!S.sel||/INPUT|TEXTAREA/.test(document.activeElement?.tagName||""))return; const t=copySel(true); if(t!=null){e.clipboardData.setData("text/plain",t);e.preventDefault()} });
+document.addEventListener("paste",e=>{ if(S.view!=="roster"||dlg.open||!S.sel||/INPUT|TEXTAREA/.test(document.activeElement?.tagName||""))return; const t=e.clipboardData.getData("text/plain"); e.preventDefault();
+  if(S.clip&&t===S.clip.tsv)pasteClip(S.clip); else if(t)pasteClip(parseTsv(t)); else pasteClip(S.clip) });
+function wireGrid(){
+  const gf=$("#gf"); if(!gf)return; gf.tabIndex=-1;
+  gf.addEventListener("pointerdown",gridPointerDown);
+  gf.addEventListener("dblclick",e=>{ const k=cellKey(e.target); if(k)openCell(k.sid,k.d) });
+  $$("#selbar [data-act]").forEach(b=>b.onclick=()=>{ const a=b.dataset.act;
+    if(a==="edit"&&S.sel)openCell(S.sel.f.sid,S.sel.f.d); else if(a==="copy")copySel(false); else if(a==="paste")pasteClip(); else if(a==="clear")clearSel(); else if(a==="undo")undoLast(); else if(a==="done")setSel(null);
+    else if(a==="ahead"&&S.sel)openClear(S.sel.a.sid,S.sel.a.d) });
+  updUndo(); requestAnimationFrame(drawSel);
+}
+
+/* ================= ROSTER BUILDER (roll forward) ================= */
+const FORMATS={
+  "21":{label:"2:1 — 14 on / 7 off · week DS, week NS",on:14,off:7,shift:"split"},
+  "86":{label:"8:6 — 8 on / 6 off · NS swing, R&R, DS swing",on:8,off:6,shift:"altN"},
+  "22":{label:"2:2 — 14 on / 14 off · week DS, week NS",on:14,off:14,shift:"split"},
+  "77":{label:"7:7 — 7 on / 7 off",on:7,off:7,shift:"altD"},
+  "custom":{label:"Custom days on / off"},
+  "adhoc":{label:"Ad hoc date range (no R&R)"},
+  "repeat":{label:"Repeat existing days (roll a block forward)"}};
+const SHIFTS={split:"First half DS, second half NS",altD:"Alternate swings: DS first",altN:"Alternate swings: NS first",D:"Day shift only",N:"Night shift only",none:"No shift marker"};
+function autoSite(sid){ const s=S.staff[sid]; let last=null; const from=addD(TODAY,-60);
+  for(let d=from; d<=addD(TODAY,60); d=addD(d,1)){ const c=cellOf(sid,d); if(c&&isOnSite(c.c))last=c.c; if(d>=TODAY&&last)break }
+  if(last)return last; const site=S.legend.find(x=>x.cat==="Client site"&&s.site&&x.d.toUpperCase()===String(s.site).replace(/\s*\(.*\)/,"").toUpperCase()); return site?site.c:"" }
+function shiftOf(mode,i,on,k){ if(mode==="split")return i<on/2?"D":"N"; if(mode==="altD")return k%2?"N":"D"; if(mode==="altN")return k%2?"D":"N"; if(mode==="D"||mode==="N")return mode; return "" }
+function buildPlan(sid,o){
+  const out={}; const site=(o.site||autoSite(sid)||"").toUpperCase(); if(!o.start||!o.until||o.until<o.start)return out;
+  if(o.fmt==="repeat"){ const src=[]; for(let d=o.rf; d<=o.rt; d=addD(d,1))src.push(cleanCell(cellOf(sid,d))); if(!src.length)return out;
+    let t=0; for(let d=o.start; d<=o.until; d=addD(d,1),t++){ const v=src[t%src.length]; if(v)out[d]={...v} } return out }
+  if(!site)return out;
+  if(o.fmt==="adhoc"){ let i=0; const n=(pd(o.until)-pd(o.start))/864e5+1; for(let d=o.start; d<=o.until; d=addD(d,1),i++){ const sh=shiftOf(o.shift,i,n,0); out[d]=sh?{c:site,h:sh}:{c:site} } return out }
+  const on=o.on, off=o.off, cyc=on+off; if(!on)return out; let t=0;
+  for(let d=o.start; d<=o.until; d=addD(d,1),t++){ const k=Math.floor(t/cyc), i=t%cyc;
+    if(i>=on){ out[d]={c:"R"}; continue }
+    if(o.travel&&i===0){ out[d]={c:o.tin}; continue }
+    if(o.travel&&i===on-1&&on>1){ out[d]={c:o.tout}; continue }
+    const sh=shiftOf(o.shift,i,on,k); out[d]=sh?{c:site,h:sh}:{c:site} }
+  return out;
+}
+function openBuilder(pre){
+  const list=Object.entries(S.staff).filter(([,s])=>s.active!==false).sort((a,b)=>staffName(a[1]).localeCompare(staffName(b[1])));
+  const picked=new Set(Array.isArray(pre)?pre:pre?[pre]:[]);
+  openDlg(`${dh("Roster builder","Roll a roster forward for one or more people. Choose a format, a start day and how far to go.")}
+  <form class="db" id="bfm">
+    <label class="f">People<input type="search" id="bpq" placeholder="Filter people" autocomplete="off"></label>
+    <div class="picklist" id="bpl">${list.map(([id,s])=>`<label class="pick"><input type="checkbox" value="${id}" ${picked.has(id)?"checked":""}> <span>${esc(staffName(s))}</span> <span class="muted small">${esc([s.company,s.roster].filter(Boolean).join(" · "))}</span></label>`).join("")}</div>
+    <div class="grid2">
+      <label class="f">Format<select id="bfmt">${Object.entries(FORMATS).map(([k,f])=>`<option value="${k}">${esc(f.label)}</option>`).join("")}</select></label>
+      <label class="f">Shift pattern<select id="bsh">${Object.entries(SHIFTS).map(([k,v])=>`<option value="${k}">${esc(v)}</option>`).join("")}</select></label>
+      <label class="f">First day<span class="hint">Travel-in day for rotations</span><input type="date" id="bs" value="${TODAY}" required></label>
+      <label class="f">Until<span class="hint">Last day to write</span><input type="date" id="bu" value="${FY_END}" max="${FY_END}" required></label>
+      <label class="f" data-show="rot custom adhoc">Site code<span class="hint">Blank = each person's current site</span><input id="bc" list="bcodes" autocomplete="off"><datalist id="bcodes">${legendOptions()}</datalist></label>
+      <label class="f" data-show="custom">Days on<input type="number" id="bon" min="1" max="60" value="14"></label>
+      <label class="f" data-show="custom">Days off<input type="number" id="boff" min="0" max="60" value="7"></label>
+      <label class="f" data-show="rot custom">Travel in<select id="bti">${["FIA","FIP","DIA","DIAL","DIP","BIA"].map(x=>`<option>${x}</option>`).join("")}</select></label>
+      <label class="f" data-show="rot custom">Travel out<select id="bto">${["FOA","FOP","DOA","DOAL","DOP","BOA"].map(x=>`<option>${x}</option>`).join("")}</select></label>
+      <label class="f" data-show="repeat">Copy from<span class="hint">First day of the block to repeat</span><input type="date" id="brf" value="${addD(TODAY,-21)}"></label>
+      <label class="f" data-show="repeat">Copy to<span class="hint">Last day of the block</span><input type="date" id="brt" value="${addD(TODAY,-1)}"></label>
+    </div>
+    <label class="row small" data-show="rot custom" style="gap:8px"><input type="checkbox" id="btr" checked style="width:auto;min-height:0"> First and last day on are travel days</label>
+    <label class="row small" style="gap:8px"><input type="checkbox" id="bkeep" checked style="width:auto;min-height:0"> Keep leave days (AL, SL, PL, LWP, WC, PH)</label>
+    <label class="row small" style="gap:8px"><input type="checkbox" id="bover" style="width:auto;min-height:0"> Overwrite confirmed and actual days too (otherwise only empty, planned and projected days change)</label>
+    <div><div class="small muted" id="bprevt"></div><div class="strip" id="bprev"></div></div>
+  </form>
+  <div class="df"><button type="button" data-close>Cancel</button><button type="submit" form="bfm" class="primary" id="bgo">Write to roster</button></div>`,true);
+  const v=id=>$(id,dlg).value;
+  const opts=()=>{ const fmt=v("#bfmt"), F=FORMATS[fmt]; return {fmt,start:v("#bs"),until:v("#bu")>FY_END?FY_END:v("#bu"),site:v("#bc").trim(),shift:v("#bsh"),
+    on:F.on||+v("#bon")||0,off:F.on?F.off:+v("#boff")||0,tin:v("#bti"),tout:v("#bto"),travel:$("#btr",dlg).checked,rf:v("#brf"),rt:v("#brt")} };
+  const people=()=>$$("#bpl input:checked",dlg).map(i=>i.value);
+  const show=()=>{ const fmt=v("#bfmt"); const kind=["21","86","22","77"].includes(fmt)?"rot":fmt; $$("[data-show]",dlg).forEach(el=>el.hidden=!el.dataset.show.split(" ").includes(kind)); $("#bsh",dlg).closest("label").hidden=fmt==="repeat" };
+  const prev=()=>{ const ps=people(), o=opts(); const box=$("#bprev",dlg), t=$("#bprevt",dlg);
+    if(!ps.length){ t.textContent="Tick at least one person."; box.innerHTML=""; $("#bgo",dlg).disabled=true; return }
+    const plan=buildPlan(ps[0],o); const days=Object.keys(plan).sort(); $("#bgo",dlg).disabled=!days.length;
+    if(!days.length){ t.textContent=o.fmt==="repeat"?"Nothing to copy in that block.":"Choose a site code (no current site found)."; box.innerHTML=""; return }
+    t.textContent=`Preview for ${staffName(S.staff[ps[0]])}: first 6 weeks of ${days.length} days, ${fmtD(o.start)} – ${fmtD(o.until)} ${o.until.slice(0,4)}${ps.length>1?` · same format for ${ps.length} people`:""}`;
+    let h=""; for(let i=0;i<42;i++){ const d=addD(o.start,i); if(d>o.until)break; const c=plan[d]; const e=lg(c&&c.c);
+      h+=`<span class="sd${pd(d).getDay()===1?" wk":""}" title="${esc(fmtD(d)+(c?" · "+c.c+(c.h?" "+c.h:""):""))}" style="background:${e?e.col:"var(--sunk)"};color:${e?ink(e.col):"inherit"}"><b>${esc(c?c.c:"")}</b>${c&&c.h?`<i>${esc(c.h)}</i>`:""}</span>` }
+    box.innerHTML=h };
+  $("#bfmt",dlg).onchange=()=>{ const F=FORMATS[v("#bfmt")]; if(F.shift)$("#bsh",dlg).value=F.shift; else if(v("#bfmt")==="adhoc")$("#bsh",dlg).value="D"; show(); prev() };
+  $("#bpq",dlg).oninput=e=>{ const q=e.target.value.toLowerCase(); $$("#bpl .pick",dlg).forEach(l=>l.hidden=!!q&&!l.textContent.toLowerCase().includes(q)) };
+  $("#bfm",dlg).addEventListener("input",prev); $("#bfm",dlg).addEventListener("change",prev);
+  $("#bsh",dlg).value="split"; show(); prev();
+  $("#bfm",dlg).onsubmit=ev=>{ ev.preventDefault(); const ps=people(), o=opts(), keep=$("#bkeep",dlg).checked, over=$("#bover",dlg).checked; let skipped=0; const all={};
+    ps.forEach(sid=>{ const plan=buildPlan(sid,o); Object.keys(plan).forEach(d=>{ const ex=cellOf(sid,d);
+      if(keep&&ex&&lg(ex.c)?.cat==="Leave"){ delete plan[d]; return }
+      if(!over&&ex&&!ex.p&&(ex.c||ex.h||ex.k)){ delete plan[d]; skipped++ } }); all[sid]=plan });
+    closeDlg(); applyChanges(all,"Roster written").then(()=>{ if(skipped)toast(`Kept ${skipped} confirmed day${skipped===1?"":"s"} unchanged. Tick "Overwrite" to replace them.`) }) };
+}
+const openSwing=openBuilder;
+
+/* ================= CLEAR AHEAD (job cancelled) ================= */
+function openClear(pre,from){
+  const list=Object.entries(S.staff).filter(([,s])=>s.active!==false).sort((a,b)=>staffName(a[1]).localeCompare(staffName(b[1])));
+  const sid0=pre||(S.sel&&S.sel.a.sid)||list[0][0];
+  openDlg(`${dh("Clear roster ahead","For a cancelled job or demob: removes everything from the chosen day forward")}
+  <form class="db" id="clr"><div class="grid2">
+    <label class="f">Person<select id="cp">${list.map(([id,s])=>`<option value="${id}" ${id===sid0?"selected":""}>${esc(staffName(s))}</option>`).join("")}</select></label>
+    <label class="f">From<input type="date" id="cfr" value="${from||TODAY}" required></label>
+    <label class="f">Until<input type="date" id="cto" value="${FY_END}" max="${FY_END}" required></label>
+    <label class="f">Then<select id="cthen"><option value="">Leave the days empty</option><option value="NA">Mark as NA (not available)</option><option value="DEMOB">Mark first day DEMOB, rest empty</option></select></label>
+  </div>
+  <label class="row small" style="gap:8px"><input type="checkbox" id="ckeep" checked style="width:auto;min-height:0"> Keep leave days (AL, SL, PL, LWP, WC, PH)</label>
+  <label class="row small" style="gap:8px"><input type="checkbox" id="cstop" checked style="width:auto;min-height:0"> Stop this person's projected swing (so it isn't rebuilt later)</label>
+  <p class="small" id="ccount"></p></form>
+  <div class="df"><button type="button" data-close>Cancel</button><button type="submit" form="clr" class="danger" id="cgo">Clear</button></div>`);
+  const plan=()=>{ const sid=$("#cp",dlg).value, fr=$("#cfr",dlg).value, to=$("#cto",dlg).value>FY_END?FY_END:$("#cto",dlg).value, keep=$("#ckeep",dlg).checked, then=$("#cthen",dlg).value; const ch={}; let n=0;
+    if(fr&&to&&fr<=to)for(let d=fr; d<=to; d=addD(d,1)){ const ex=cellOf(sid,d); if(keep&&ex&&lg(ex.c)?.cat==="Leave")continue;
+      const nv=then==="NA"?{c:"NA"}:then==="DEMOB"&&d===fr?{c:"DEMOB"}:null; if(ex||nv){ ch[d]=nv; if(ex&&(ex.c||ex.h||ex.k))n++ } }
+    return {sid,ch,n,fr,to} };
+  const upd=()=>{ const p=plan(); $("#ccount",dlg).textContent=p.n?`${p.n} rostered day${p.n===1?"":"s"} will be cleared for ${staffName(S.staff[p.sid])}, ${fmtD(p.fr)} – ${fmtD(p.to)}. You can undo this.`:"Nothing rostered in that range."; $("#cgo",dlg).disabled=!Object.keys(p.ch).length };
+  $("#clr",dlg).addEventListener("input",upd); $("#clr",dlg).addEventListener("change",upd); upd();
+  $("#clr",dlg).onsubmit=ev=>{ ev.preventDefault(); const p=plan(); const stop=$("#cstop",dlg).checked; closeDlg();
+    applyChanges({[p.sid]:p.ch},"Cleared ahead for "+staffName(S.staff[p.sid]));
+    if(stop) sb.from("roster_templates").delete().eq("staff_id",p.sid).then(({error})=>{ if(error)console.warn(error) }) };
+}
+
+function csvCell(v){ v=String(v??""); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v }
+function exportWeekCsv(){
+  const dates=rangeDates(), list=visibleStaff(), onb=onboardingStaff();
+  const rows=[["REF","FIRST NAME","SURNAME","ROSTER","TRADE","TYPE","UTE","COMPANY","SITE",...dates.map(d=>DOW[(pd(d).getDay()+6)%7]+" "+d.split("-").reverse().join("/")),"TOTAL","NOTES"]];
+  const add=(arr,start)=>arr.forEach(([sid,s],i)=>{ const base=[start+i+1,s.first,s.last]; const rest=[s.trade,s.type,s.ute,s.company,s.site];
+    const tot=dates.reduce((a,d)=>a+hrs(cellOf(sid,d)?.h),0);
+    rows.push([...base,s.roster,...rest,...dates.map(d=>cellOf(sid,d)?.c||""),"",[s.notes,s.rosterNote].filter(Boolean).join("; ")]);
+    rows.push([...base,"KM",...rest,...dates.map(d=>cellOf(sid,d)?.k||""),"",""]);
+    rows.push([...base,"HRS",...rest,...dates.map(d=>cellOf(sid,d)?.h||""),tot?tot.toFixed(2):"",""]) });
+  add(list,0);
+  if(onb.length){ rows.push([]); rows.push(["","ONBOARDING"]); add(onb,list.length) }
+  saveFile(`LH Roster ${dates[0]} to ${dates[dates.length-1]}.csv`,rows.map(r=>r.map(csvCell).join(",")).join("\n"));
+}
+
+/* ================= PEOPLE ================= */
+function renderPeople(main){
+  const q=S.peopleQ.toLowerCase();
+  const list=Object.entries(S.staff).filter(([,s])=>S.inactive||s.active!==false).filter(([,s])=>!q||[staffName(s),s.trade,s.company,s.site].join(" ").toLowerCase().includes(q)).sort((a,b)=>staffName(a[1]).localeCompare(staffName(b[1])));
+  main.innerHTML=`<div class="secthead"><h2>People</h2><span class="muted">${list.length} shown</span><span class="spacer"></span><button class="primary" id="addp">Add person</button></div>
+  <div class="toolbar"><input type="search" id="pq" placeholder="Search people" value="${esc(S.peopleQ)}" aria-label="Search people"><label class="row small" style="gap:6px"><input type="checkbox" id="pin" ${S.inactive?"checked":""} style="width:auto;min-height:0"> Show inactive</label></div>
+  <div class="tframe"><table class="list"><thead><tr><th>Name</th><th>Status</th><th>Trade</th><th>Roster</th><th>Company</th><th>Site</th><th>Ute</th><th>Type</th><th>Today</th></tr></thead><tbody>
+  ${list.map(([id,s])=>{const c=cellOf(id,TODAY); const e=lg(c?.c); return `<tr class="click" data-person="${id}"><td><b>${esc(staffName(s))}</b>${s.notes?`<div class="small muted">${esc(s.notes)}</div>`:""}${s.rosterNote?`<div class="small muted">${esc(s.rosterNote)}</div>`:""}</td><td>${s.active===false?'<span class="chip">Left</span>':isOnb(s)?`<span class="chip warn">Onboarding${s.start?" · "+fmtD(s.start):""}</span>`:s.status==="Subcontractor"?'<span class="chip">Subcontractor</span>':'<span class="chip ok">Active</span>'}${s.mondayStatus&&s.active!==false?`<div class="small muted">${esc(s.mondayStatus)}</div>`:""}</td><td>${esc(s.trade)}</td><td class="num">${esc(s.roster)}</td><td>${s.company?`<span class="chip">${esc(s.company)}</span>`:'<span class="muted">—</span>'}</td><td>${esc(s.site)}</td><td>${esc(s.ute&&s.ute!=="NO"?s.ute:"")}</td><td>${esc(s.type)}</td><td>${c?.c?`<span class="swatch" style="background:${e?e.col:"var(--sunk)"};color:${e?ink(e.col):"inherit"}">${esc(c.c)}</span>`:'<span class="muted">—</span>'}</td></tr>`}).join("")||`<tr><td colspan="9"><div class="empty-state">No people yet. Add your first worker.</div></td></tr>`}
+  </tbody></table></div>`;
+  $("#pq").oninput=e=>{S.peopleQ=e.target.value;render()}; $("#pin").onchange=e=>{S.inactive=e.target.checked;render()};
+  $("#addp").onclick=()=>openPerson(null); $$("[data-person]",main).forEach(r=>r.onclick=()=>openPerson(r.dataset.person));
+}
+function openPerson(id){
+  const s=id?S.staff[id]:{first:"",last:"",trade:"",roster:"2&1",type:"CAS",ute:"",company:"",site:"",notes:"",active:true};
+  const cos=companies();
+  openDlg(`${dh(id?staffName(s):"Add person",id?"Edit details used on the roster and quotes":"New worker for the labour hire roster")}
+  <form class="db" id="pf"><div class="grid2">
+    <label class="f">First name<input id="pf1" value="${esc(s.first)}" required autofocus></label>
+    <label class="f">Surname<input id="pf2" value="${esc(s.last)}" required></label>
+    <label class="f">Trade<input id="pf3" value="${esc(s.trade)}" list="trades"><datalist id="trades">${Array.from(new Set(Object.values(S.staff).map(x=>x.trade).filter(Boolean))).sort().map(t=>`<option>${esc(t)}</option>`).join("")}</datalist></label>
+    <label class="f">Roster pattern<span class="hint">e.g. 2&amp;1, 8&amp;6, FLEX</span><input id="pf4" value="${esc(s.roster)}"></label>
+    <label class="f">Employment type<select id="pf5">${["PERM","CAS","SUB"].map(t=>`<option ${s.type===t?"selected":""}>${t}</option>`).join("")}<option value="" ${!s.type?"selected":""}>—</option></select></label>
+    <label class="f">Ute<select id="pf6"><option value="">None</option>${Object.values(S.assets).filter(a=>a.type==="Ute").sort((a,b)=>a.name.localeCompare(b.name)).map(a=>`<option ${s.ute===a.name?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
+    <label class="f">Company<select id="pf7"><option value="">Unassigned</option>${cos.map(c=>`<option ${s.company===c?"selected":""}>${esc(c)}</option>`).join("")}</select></label>
+    <label class="f">Site<input id="pf8" value="${esc(s.site)}"></label>
+    <label class="f">Roster status<select id="pf11">${["Active","Onboarding","Subcontractor"].map(t=>`<option ${(s.status||"Active")===t?"selected":""}>${t}</option>`).join("")}</select></label>
+    <label class="f">Start date<input type="date" id="pf12" value="${esc(s.start||"")}"></label>
+  </div>
+  ${s.rosterNote||s.mondayStatus?`<p class="small muted">${esc([s.mondayStatus?"monday.com: "+s.mondayStatus:"",s.rosterNote].filter(Boolean).join(" · "))}</p>`:""}
+  <label class="f">Notes<textarea id="pf9">${esc(s.notes)}</textarea></label>
+  <label class="row small" style="gap:6px"><input type="checkbox" id="pf10" ${s.active!==false?"checked":""} style="width:auto;min-height:0"> Active on the roster</label>
+  </form>
+  <div class="df">${id?`<button type="button" id="pswing">Roster builder</button><button type="button" id="pclear">Clear ahead</button>`:""}<span class="spacer"></span><button type="button" data-close>Cancel</button><button type="submit" form="pf" class="primary">Save</button></div>`);
+  if(id){$("#pswing",dlg).onclick=()=>openBuilder([id]); $("#pclear",dlg).onclick=()=>openClear(id,TODAY)}
+  $("#pf",dlg).onsubmit=ev=>{ev.preventDefault(); const v=k=>$(k,dlg).value.trim();
+    const data={first:v("#pf1"),last:v("#pf2"),trade:v("#pf3"),roster:v("#pf4"),type:$("#pf5",dlg).value,ute:$("#pf6",dlg).value,company:$("#pf7",dlg).value,site:v("#pf8"),notes:v("#pf9"),active:$("#pf10",dlg).checked,status:$("#pf11",dlg).value,start:$("#pf12",dlg).value};
+    let nid=id||slug(data.first+"-"+data.last); if(!id&&S.staff[nid])nid+="-"+Date.now().toString(36);
+    saveDoc("staff/"+nid,{...(id?S.staff[id]:{}),...data}).then(()=>toast("Saved "+staffName(data))); closeDlg() };
+}
+
+/* ================= ASSETS ================= */
+function renderAssets(main){
+  const dates=[...Array(7)].map((_,i)=>addD(monday(TODAY),i));
+  const holders={}; Object.entries(S.staff).forEach(([id,s])=>{ if(s.active!==false&&s.ute)(holders[s.ute.toUpperCase()]??=[]).push(id) });
+  const usage={}; dates.forEach(d=>Object.entries(S.staff).forEach(([sid,s])=>{ const c=cellOf(sid,d); if(!isWorking(c?.c))return; const a=(c.a||s.ute||"").toUpperCase(); if(!a)return; ((usage[a]??={})[d]??=new Set()).add(sid) }));
+  const list=Object.entries(S.assets).sort((a,b)=>(a[1].type||"").localeCompare(b[1].type||"")||(a[1].name||"").localeCompare(b[1].name||""));
+  main.innerHTML=`<div class="secthead"><h2>Assets</h2><span class="muted">Utes, trucks and hire tooling · this week ${fmtD(dates[0])} – ${fmtD(dates[6])}</span><span class="spacer"></span><button class="primary" id="adda">Add asset</button></div>
+  <div class="tframe"><table class="list"><thead><tr><th>Asset</th><th>Type</th><th>Allocated to</th>${dates.map(d=>`<th class="r">${DOW[(pd(d).getDay()+6)%7]}</th>`).join("")}</tr></thead><tbody>
+  ${list.map(([id,a])=>{ const key=(a.name||"").toUpperCase(); const hs=(holders[key]||[]);
+    return `<tr class="click" data-asset="${id}"><td><b class="code">${esc(a.name)}</b>${a.notes?`<div class="small muted">${esc(a.notes)}</div>`:""}</td><td>${esc(a.type)}</td><td>${hs.map(h=>esc(staffName(S.staff[h]))).join(", ")||'<span class="muted">Unallocated</span>'}${hs.length>1?' <span class="chip warn">Shared</span>':""}</td>
+    ${dates.map(d=>{const u=usage[key]?.[d]; const n=u?u.size:0; return `<td class="r">${n>1?`<span class="chip crit" title="${esc(Array.from(u).map(i=>staffName(S.staff[i])).join(", "))}">${n}× clash</span>`:n?`<span class="chip ok" title="${esc(staffName(S.staff[Array.from(u)[0]]))}">In use</span>`:'<span class="muted small">Free</span>'}</td>`}).join("")}</tr>` }).join("")||`<tr><td colspan="10"><div class="empty-state">No assets yet. Add utes and hire tooling here.</div></td></tr>`}
+  </tbody></table></div><p class="small muted" style="margin-top:8px">A ute counts as in use on any working day for the person it's allocated to, unless a roster cell names a different asset.</p>`;
+  $("#adda").onclick=()=>openAsset(null); $$("[data-asset]",main).forEach(r=>r.onclick=()=>openAsset(r.dataset.asset));
+}
+function openAsset(id){
+  const a=id?S.assets[id]:{name:"",type:"Ute",notes:""};
+  openDlg(`${dh(id?a.name:"Add asset")}
+  <form class="db" id="af"><div class="grid2">
+    <label class="f">Name or fleet number<input id="af1" value="${esc(a.name)}" required autofocus placeholder="e.g. OEMX71"></label>
+    <label class="f">Type<select id="af2">${["Ute","Truck","Tooling","Trailer","Other"].map(t=>`<option ${a.type===t?"selected":""}>${t}</option>`).join("")}</select></label>
+  </div><label class="f">Notes<span class="hint">Rego, service due, location</span><textarea id="af3">${esc(a.notes)}</textarea></label></form>
+  <div class="df">${id?`<button type="button" class="danger" id="adel">Delete asset</button>`:""}<span class="spacer"></span><button type="button" data-close>Cancel</button><button type="submit" form="af" class="primary">Save</button></div>`);
+  if(id)$("#adel",dlg).onclick=e=>inlineConfirm(e.currentTarget,`Delete ${a.name}?`,()=>{delDoc("assets/"+id).then(()=>toast("Deleted"));closeDlg()});
+  $("#af",dlg).onsubmit=ev=>{ev.preventDefault(); const data={name:$("#af1",dlg).value.trim().toUpperCase().startsWith("OEMX")?$("#af1",dlg).value.trim().toUpperCase().replace(/\s+/g,""):$("#af1",dlg).value.trim(),type:$("#af2",dlg).value,notes:$("#af3",dlg).value.trim()};
+    saveDoc("assets/"+(id||slug(data.name)),data).then(()=>toast("Saved")); closeDlg()};
+}
+
+/* ================= QUOTES ================= */
+function clientItems(cl){ const px=(cl&&cl.prefix||"").toUpperCase(); const all=Object.values(S.items);
+  const own=all.filter(i=>px&&(i.client||"").toUpperCase()===px).sort((a,b)=>a.code.localeCompare(b.code));
+  const gen=all.filter(i=>(i.client||"GENERIC")==="GENERIC").sort((a,b)=>a.code.localeCompare(b.code)); return {own,gen} }
+function quoteTotals(q){ const sub=(q.lines||[]).reduce((a,l)=>a+(+l.qty||0)*(+l.rate||0),0); const gst=Math.round(sub*0.1*100)/100; return {sub,gst,total:sub+gst} }
+function nextQuoteNo(){ const y=TODAY.slice(2,4); const nums=Object.values(S.quotes).map(q=>+(/LHQ-\d\d-(\d+)/.exec(q.number||"")||[])[1]||0); return `LHQ-${y}-${String(Math.max(0,...nums)+1).padStart(4,"0")}` }
+function renderQuotes(main){
+  const list=Object.entries(S.quotes).sort((a,b)=>(b[1].date||"").localeCompare(a[1].date||"")||(b[1].number||"").localeCompare(a[1].number||""));
+  main.innerHTML=`<div class="secthead"><h2>Quotes</h2><span class="muted">Built from each client's Xero rate items</span><span class="spacer"></span><button class="primary" id="addq">New quote</button></div>
+  <div class="tframe"><table class="list"><thead><tr><th>Quote</th><th>Client</th><th>Site</th><th>Date</th><th>Status</th><th class="r">Total inc GST</th></tr></thead><tbody>
+  ${list.map(([id,q])=>{const t=quoteTotals(q); const cl=S.clients[q.clientId]; return `<tr class="click" data-q="${id}"><td><b class="code">${esc(q.number)}</b>${q.title?`<div class="small muted">${esc(q.title)}</div>`:""}</td><td>${esc(cl?cl.name:q.clientName)}</td><td>${esc(q.site)}</td><td class="num">${q.date?fmtD(q.date)+" "+q.date.slice(0,4):""}</td><td><span class="chip ${q.status==="Accepted"?"ok":q.status==="Declined"?"crit":q.status==="Sent"?"warn":""}">${esc(q.status||"Draft")}</span></td><td class="r num"><b>${money(t.total)}</b></td></tr>`}).join("")||`<tr><td colspan="6"><div class="empty-state">No quotes yet. Start one with <b>New quote</b>: pick a client and their Xero rates load automatically.</div></td></tr>`}
+  </tbody></table></div>`;
+  $("#addq").onclick=()=>openQuote(null); $$("[data-q]",main).forEach(r=>r.onclick=()=>openQuote(r.dataset.q));
+}
+let Q=null;
+function openQuote(id){
+  const base={number:nextQuoteNo(),title:"",clientId:"",clientName:"",attn:"",site:"",date:TODAY,valid:addD(TODAY,30),start:"",status:"Draft",
+    notes:"Rates are per hour unless stated, ex GST.\nTravel charged per km from the nearest OEMX base or at cost for flights.\nRoster and site requirements as confirmed by purchase order.",lines:[]};
+  Q=id?JSON.parse(JSON.stringify(S.quotes[id])):base; Q._id=id;
+  drawQuote();
+}
+function itemOpts(cl,sel){ const {own,gen}=clientItems(cl); const o=i=>`<option value="${esc(i.code)}" ${sel===i.code?"selected":""}>${esc(i.code)} — ${esc(i.desc)}</option>`;
+  return `<option value="">Custom line</option>${own.length?`<optgroup label="${esc(cl.prefix)} rates">${own.map(o).join("")}</optgroup>`:""}<optgroup label="Standard rates">${gen.map(o).join("")}</optgroup>` }
+function itemByCode(code){ return Object.values(S.items).find(i=>i.code===code) }
+function drawQuote(){
+  const cl=S.clients[Q.clientId]; const clients=Object.entries(S.clients).filter(([,c])=>c.active!==false).sort((a,b)=>a[1].name.localeCompare(b[1].name));
+  const sites=S.legend.filter(x=>x.cat==="Client site"&&cl&&cl.legendCompany&&x.co.toUpperCase()===cl.legendCompany.toUpperCase());
+  const t=quoteTotals(Q);
+  openDlg(`${dh(Q._id?"Quote "+Q.number:"New quote",cl?cl.name:"Choose a client to load their Xero rates")}
+  <div class="db">
+    <div class="grid2">
+      <label class="f">Client<select id="qc" ${Q._id?"":"autofocus"}><option value="">Choose client…</option>${clients.map(([id,c])=>`<option value="${id}" ${Q.clientId===id?"selected":""}>${esc(c.name)}</option>`).join("")}</select></label>
+      <label class="f">Site<input id="qs" list="qsites" value="${esc(Q.site)}" placeholder="${sites.length?"e.g. "+esc(sites[0].d):"Site name"}"><datalist id="qsites">${sites.map(s=>`<option value="${esc(s.d)} (${esc(s.c)})"></option>`).join("")}</datalist></label>
+      <label class="f">Attention<input id="qa" value="${esc(Q.attn)}" placeholder="Contact name"></label>
+      <label class="f">Job title<input id="qt" value="${esc(Q.title)}" placeholder="e.g. 2× HD fitters, shutdown"></label>
+      <label class="f">Quote number<input id="qn" value="${esc(Q.number)}"></label>
+      <label class="f">Quote date<input type="date" id="qd" value="${esc(Q.date)}"></label>
+      <label class="f">Valid until<input type="date" id="qv" value="${esc(Q.valid)}"></label>
+      <label class="f">Proposed start<input type="date" id="qst" value="${esc(Q.start)}"></label>
+      <label class="f">Status<select id="qstat">${["Draft","Sent","Accepted","Declined"].map(s=>`<option ${Q.status===s?"selected":""}>${s}</option>`).join("")}</select></label>
+    </div>
+    ${cl&&!cl.xeroId?`<div class="notice">${esc(cl.name)} wasn't found on recent Xero invoices. Check the contact in Xero before sending.</div>`:""}
+    ${cl&&!clientItems(cl).own.length?`<div class="notice">No ${esc(cl.prefix)}-specific items found yet, so standard rates are shown. Import your Xero items list on the Clients &amp; rates tab to load them.</div>`:""}
+    <div class="helper">
+      <label class="f">Labour line helper<select id="hi">${cl?itemOpts(cl,""):`<option value="">Choose client first</option>`}</select></label>
+      <label class="f">People<input type="number" id="hp" value="1" min="1"></label>
+      <label class="f">Days<input type="number" id="hd" value="14" min="1"></label>
+      <label class="f">Hours / day<input type="number" id="hh" value="12" step="0.5"></label>
+      <button type="button" id="hadd" ${cl?"":"disabled"}>Add line</button>
+    </div>
+    <div class="ql"><table class="qt"><thead><tr><th style="width:26%">Item</th><th>Description</th><th style="width:90px">Qty</th><th style="width:70px">Unit</th><th style="width:110px">Rate</th><th style="width:110px;text-align:right">Amount</th><th style="width:40px"></th></tr></thead><tbody id="ql">
+    ${(Q.lines||[]).map((l,i)=>{const it=itemByCode(l.code); const rng=it&&it.min!==it.max?`Billed $${it.min}–$${it.max} on recent invoices`:""; return `<tr data-i="${i}">
+      <td><select data-f="code">${cl?itemOpts(cl,l.code):`<option>${esc(l.code)}</option>`}</select></td>
+      <td><input data-f="desc" value="${esc(l.desc)}"></td>
+      <td><input data-f="qty" type="number" step="0.5" value="${esc(l.qty)}"></td>
+      <td><input data-f="unit" value="${esc(l.unit)}"></td>
+      <td><input data-f="rate" type="number" step="0.01" value="${esc(l.rate)}">${rng?`<div class="rng">${esc(rng)}</div>`:""}${it&&+l.rate!==+it.price?`<div class="rng">List $${it.price}</div>`:""}</td>
+      <td class="amt">${money((+l.qty||0)*(+l.rate||0))}</td>
+      <td><button type="button" class="icon ghost" data-del="${i}" aria-label="Remove line">✕</button></td></tr>`}).join("")||`<tr><td colspan="7" class="muted small" style="padding:12px">No lines yet. Use the helper above, or add a blank line.</td></tr>`}
+    </tbody></table></div>
+    <div class="row"><button type="button" id="qaddl">Add blank line</button><button type="button" id="qtravel" ${cl?"":"disabled"}>Add travel (km)</button><button type="button" id="qvh" ${cl?"":"disabled"}>Add vehicle hire</button><span class="spacer"></span>
+      <div class="totals"><span>Subtotal</span><span class="num">${money(t.sub)}</span><span>GST 10%</span><span class="num">${money(t.gst)}</span><b>Total</b><b class="num">${money(t.total)}</b></div></div>
+    <label class="f">Notes and terms<textarea id="qnotes">${esc(Q.notes)}</textarea></label>
+  </div>
+  <div class="df">${Q._id?`<button type="button" class="danger" id="qdel">Delete</button><button type="button" id="qdup">Duplicate</button>`:""}<button type="button" id="qcopy" ${Q.lines.length?"":"disabled"}>Copy lines for Xero</button><button type="button" id="qpdf" ${Q.lines.length&&cl?"":"disabled"}>Download PDF</button><span class="spacer"></span><button type="button" data-close>Close</button><button type="button" class="primary" id="qsave" ${cl?"":"disabled"}>Save quote</button></div>`,true);
+  const grab=()=>{ const v=k=>$(k,dlg).value; Object.assign(Q,{clientId:v("#qc"),site:v("#qs"),attn:v("#qa"),title:v("#qt"),number:v("#qn"),date:v("#qd"),valid:v("#qv"),start:v("#qst"),status:v("#qstat"),notes:v("#qnotes")}); Q.clientName=S.clients[Q.clientId]?.name||"" };
+  const redraw=()=>{ const st=dlg.scrollTop; grab(); drawQuote(); dlg.scrollTop=st };
+  $("#qc",dlg).onchange=redraw;
+  $("#ql",dlg).addEventListener("change",e=>{ const tr=e.target.closest("tr[data-i]"); if(!tr)return; const i=+tr.dataset.i, f=e.target.dataset.f, l=Q.lines[i];
+    if(f==="code"){ const it=itemByCode(e.target.value); l.code=e.target.value; if(it){l.desc=it.desc;l.unit=it.unit;l.rate=it.price} }
+    else l[f]=(f==="qty"||f==="rate")?(e.target.value===""?"":+e.target.value):e.target.value; redraw() });
+  $$("[data-del]",dlg).forEach(b=>b.onclick=()=>{Q.lines.splice(+b.dataset.del,1);redraw()});
+  $("#hadd",dlg).onclick=()=>{ const it=itemByCode($("#hi",dlg).value); const p=+$("#hp",dlg).value||1, d=+$("#hd",dlg).value||1, h=+$("#hh",dlg).value||0;
+    const unit=it?it.unit:"hr"; const qty=unit==="hr"?p*d*h:unit==="day"||unit==="shift"?p*d:p;
+    Q.lines.push({code:it?it.code:"",desc:(it?it.desc:"Labour")+` — ${p} × ${d} days${unit==="hr"?" × "+h+" h":""}`,qty,unit,rate:it?it.price:0}); redraw() };
+  $("#qaddl",dlg).onclick=()=>{Q.lines.push({code:"",desc:"",qty:1,unit:"ea",rate:0});redraw()};
+  const pick=re=>{const {own,gen}=clientItems(S.clients[$("#qc",dlg).value]); return own.find(i=>re.test(i.code))||gen.find(i=>re.test(i.code))};
+  $("#qtravel",dlg).onclick=()=>{const it=pick(/^(\w+ )?KM( FS)?$|^FS KM$/); Q.lines.push({code:it?it.code:"",desc:(it?it.desc:"Travel")+" — e.g. NEW–site–NEW",qty:0,unit:"km",rate:it?it.price:0});redraw()};
+  $("#qvh",dlg).onclick=()=>{const it=pick(/VH/); Q.lines.push({code:it?it.code:"",desc:it?it.desc:"Vehicle hire (per day)",qty:+$("#hd",dlg).value||1,unit:"day",rate:it?it.price:0});redraw()};
+  const payload=()=>{ grab(); const {_id,...q}=Q; q.lines=q.lines.map(l=>({code:l.code||"",desc:l.desc||"",qty:+l.qty||0,unit:l.unit||"",rate:+l.rate||0})); q.updated=new Date().toISOString(); return q };
+  $("#qsave",dlg).onclick=()=>{ const q=payload(); const id=Q._id||slug(q.number); Q._id=id; saveDoc("quotes/"+id,q).then(()=>toast("Quote "+q.number+" saved")); redraw() };
+  if(Q._id){ $("#qdup",dlg).onclick=()=>{ grab(); Q=JSON.parse(JSON.stringify(Q)); Q._id=null; Q.number=nextQuoteNo(); Q.status="Draft"; Q.date=TODAY; Q.valid=addD(TODAY,30); drawQuote(); toast("Copied. Save to keep it.") };
+    $("#qdel",dlg).onclick=e=>inlineConfirm(e.currentTarget,`Delete quote ${Q.number}?`,()=>{delDoc("quotes/"+Q._id).then(()=>toast("Quote deleted"));closeDlg()}) }
+  $("#qcopy",dlg).onclick=async()=>{ grab(); const txt=["*ItemCode\tDescription\tQuantity\tUnitAmount"].concat(Q.lines.map(l=>[l.code,String(l.desc).replace(/\s+/g," "),l.qty,l.rate].join("\t"))).join("\n");
+    try{ await navigator.clipboard.writeText(txt); toast("Lines copied: paste into Xero or a spreadsheet") }catch(_){ openDlg(`${dh("Copy these lines")}<div class="db"><textarea id="cpy" style="min-height:220px;font-family:ui-monospace,monospace;font-size:12px">${esc(txt)}</textarea></div><div class="df"><button data-close>Done</button></div>`); $("#cpy",dlg).select() } };
+  $("#qpdf",dlg).onclick=()=>{ grab(); try{ const blob=quotePdf(Q); saveFile(`${Q.number} ${S.clients[Q.clientId]?.prefix||""} quote.pdf`.replace(/\s+/g," "),blob) }catch(e){ console.error(e); toast("The PDF couldn't be built. Reload the page and try again.",true) } };
+}
+function quotePdf(q){
+  const {jsPDF}=window.jspdf; const d=new jsPDF({unit:"pt",format:"a4"}); const W=595, M=42; let y=M;
+  const cl=S.clients[q.clientId]||{}; const t=quoteTotals(q);
+  d.setFillColor(164,35,43); d.rect(0,0,W,6,"F");
+  d.setFont("helvetica","bold"); d.setFontSize(20); d.setTextColor(30,26,26); d.text("OEMX DIESEL",M,y+14);
+  d.setFont("helvetica","normal"); d.setFontSize(9); d.setTextColor(108,99,97); d.text("Labour Hire Division · OEMX Diesel Pty Ltd",M,y+28);
+  d.setFont("helvetica","bold"); d.setFontSize(22); d.setTextColor(164,35,43); d.text("QUOTATION",W-M,y+14,{align:"right"});
+  d.setFont("helvetica","normal"); d.setFontSize(9.5); d.setTextColor(30,26,26);
+  [["Quote no.",q.number],["Date",q.date?fmtD(q.date)+" "+q.date.slice(0,4):""],["Valid until",q.valid?fmtD(q.valid)+" "+q.valid.slice(0,4):""]].forEach((r,i)=>{ d.text(r[0],W-M-150,y+32+i*13); d.text(String(r[1]||""),W-M,y+32+i*13,{align:"right"}) });
+  y+=86; d.setDrawColor(224,218,216); d.line(M,y,W-M,y); y+=18;
+  d.setFont("helvetica","bold"); d.setFontSize(9); d.setTextColor(108,99,97); d.text("PREPARED FOR",M,y); d.text("SCOPE",W/2,y); y+=14;
+  d.setFont("helvetica","normal"); d.setFontSize(10.5); d.setTextColor(30,26,26);
+  const left=[cl.name||q.clientName,q.attn?"Attn: "+q.attn:""].filter(Boolean); const right=[q.title,q.site?"Site: "+q.site:"",q.start?"Proposed start: "+fmtD(q.start)+" "+q.start.slice(0,4):""].filter(Boolean);
+  const lh=13; let ly=y; left.forEach(s=>{d.splitTextToSize(s,W/2-M-12).forEach(p=>{d.text(p,M,ly);ly+=lh})}); let ry=y; right.forEach(s=>{d.splitTextToSize(s,W/2-M).forEach(p=>{d.text(p,W/2,ry);ry+=lh})});
+  y=Math.max(ly,ry)+14;
+  const cols=[{h:"Item",x:M,w:92},{h:"Description",x:M+96,w:210},{h:"Qty",x:M+330,w:40,r:1},{h:"Unit",x:M+376,w:34},{h:"Rate",x:M+452,w:50,r:1},{h:"Amount",x:W-M,w:70,r:1}];
+  const head=()=>{ d.setFillColor(237,233,231); d.rect(M-4,y-11,W-2*M+8,17,"F"); d.setFont("helvetica","bold"); d.setFontSize(8.5); d.setTextColor(108,99,97); cols.forEach(c=>d.text(c.h.toUpperCase(),c.x,y,{align:c.r?"right":"left"})); y+=16; d.setFont("helvetica","normal"); d.setFontSize(9.5); d.setTextColor(30,26,26) };
+  head();
+  q.lines.forEach(l=>{ const desc=d.splitTextToSize(String(l.desc||""),cols[1].w); const code=d.splitTextToSize(String(l.code||""),cols[0].w); const rows=Math.max(desc.length,code.length); const hgt=rows*12+6;
+    if(y+hgt>800){ d.addPage(); y=M; head() }
+    d.text(code,cols[0].x,y); d.text(desc,cols[1].x,y); d.text(String(+l.qty||0),cols[2].x,y,{align:"right"}); d.text(String(l.unit||""),cols[3].x,y);
+    d.text(money(l.rate).replace("$",""),cols[4].x,y,{align:"right"}); d.text(money((+l.qty||0)*(+l.rate||0)),cols[5].x,y,{align:"right"});
+    y+=hgt; d.setDrawColor(224,218,216); d.line(M,y-9,W-M,y-9) });
+  if(y>700){d.addPage();y=M}
+  y+=8; d.setFontSize(10); [["Subtotal (ex GST)",money(t.sub)],["GST 10%",money(t.gst)]].forEach(r=>{d.text(r[0],W-M-150,y);d.text(r[1],W-M,y,{align:"right"});y+=15});
+  d.setFont("helvetica","bold"); d.setFontSize(12); d.text("Total (inc GST)",W-M-150,y+2); d.text(money(t.total),W-M,y+2,{align:"right"}); y+=28;
+  if(q.notes){ d.setFont("helvetica","bold"); d.setFontSize(9); d.setTextColor(108,99,97); d.text("NOTES AND TERMS",M,y); y+=13; d.setFont("helvetica","normal"); d.setFontSize(9.5); d.setTextColor(30,26,26);
+    d.splitTextToSize(q.notes,W-2*M).forEach(p=>{ if(y>800){d.addPage();y=M} d.text(p,M,y); y+=12.5 }) }
+  const pages=d.getNumberOfPages(); for(let i=1;i<=pages;i++){ d.setPage(i); d.setFontSize(8); d.setTextColor(140,130,128); d.text(`${q.number} · Page ${i} of ${pages} · All amounts AUD`,W/2,828,{align:"center"}) }
+  return d.output("blob");
+}
+
+/* ================= CLIENTS & RATES ================= */
+function renderRates(main){
+  const cls=Object.entries(S.clients).sort((a,b)=>a[1].name.localeCompare(b[1].name));
+  const f=S.itemClient; const items=Object.entries(S.items).filter(([,i])=>!f||(i.client||"GENERIC")===f).sort((a,b)=>(a[1].client||"").localeCompare(b[1].client||"")||a[1].code.localeCompare(b[1].code));
+  const prefixes=Array.from(new Set(Object.values(S.items).map(i=>i.client||"GENERIC"))).sort();
+  main.innerHTML=`<div class="secthead"><h2>Clients</h2><span class="muted">Active Xero customers, matched to roster companies</span><span class="spacer"></span><button id="addc">Add client</button></div>
+  <div class="tframe" style="margin-bottom:28px"><table class="list"><thead><tr><th>Xero contact</th><th>Roster company</th><th>Item prefix</th><th>Last invoiced</th><th>Rate items</th><th>Status</th></tr></thead><tbody>
+  ${cls.map(([id,c])=>{const n=Object.values(S.items).filter(i=>(i.client||"").toUpperCase()===(c.prefix||"").toUpperCase()).length; return `<tr class="click" data-c="${id}"><td><b>${esc(c.name)}</b>${!c.xeroId?' <span class="chip warn">Check Xero</span>':""}</td><td>${esc(c.legendCompany)||'<span class="muted">—</span>'}</td><td class="code">${esc(c.prefix)}</td><td class="num">${c.lastInvoiced?fmtD(c.lastInvoiced)+" "+c.lastInvoiced.slice(0,4):"—"}</td><td class="num">${n?n+" own + standard":"Standard only"}</td><td>${c.active===false?'<span class="chip">Inactive</span>':'<span class="chip ok">Active</span>'}</td></tr>`}).join("")}
+  </tbody></table></div>
+  <div class="secthead"><h2>Rate items</h2><span class="muted">${items.length} items · list price drives new quote lines</span><span class="spacer"></span>
+    <select id="ic" aria-label="Filter by prefix" style="width:auto"><option value="">All prefixes</option>${prefixes.map(p=>`<option ${f===p?"selected":""}>${esc(p)}</option>`).join("")}</select>
+    <label class="btn" for="imp" style="display:inline-flex;align-items:center">Import Xero items CSV</label><input type="file" id="imp" accept=".csv,text/csv" hidden>
+    <button id="addi">Add item</button></div>
+  <p class="small muted" style="margin:-4px 0 10px">Seeded from items on Xero invoices issued Jul–Oct 2026. For exact list prices, export Products and services from Xero and import the CSV here; matching codes are updated, new codes are added.</p>
+  <div class="tframe"><table class="list"><thead><tr><th>Code</th><th>Description</th><th>Prefix</th><th>Unit</th><th class="r">List price</th><th>Recently billed</th></tr></thead><tbody>
+  ${items.map(([id,i])=>`<tr><td class="code" style="white-space:nowrap">${esc(i.code)}</td><td>${esc(i.desc)}</td><td>${esc(i.client||"GENERIC")}</td><td>${esc(i.unit)}</td><td class="r"><input class="price num" id="p-${id}" data-item="${id}" type="number" step="0.01" value="${esc(i.price)}" aria-label="Price for ${esc(i.code)}"></td><td class="small">${i.min!=null&&i.min!==i.max?`<span class="chip warn">$${i.min}–$${i.max}</span>`:i.min!=null?`<span class="muted">$${i.min}</span>`:'<span class="muted">—</span>'}</td></tr>`).join("")}
+  </tbody></table></div>`;
+  $("#addc").onclick=()=>openClient(null); $$("[data-c]",main).forEach(r=>r.onclick=()=>openClient(r.dataset.c));
+  $("#ic").onchange=e=>{S.itemClient=e.target.value;render()};
+  $$("[data-item]",main).forEach(inp=>inp.onchange=()=>{ const v=+inp.value; if(isNaN(v))return; patchDoc("items/"+inp.dataset.item,{price:v}).then(()=>toast("Price updated")) });
+  $("#addi").onclick=()=>openItem(); $("#imp").onchange=e=>{const f=e.target.files[0]; if(f)importItems(f); e.target.value=""};
+}
+function openClient(id){
+  const c=id?S.clients[id]:{name:"",xeroId:"",legendCompany:"",prefix:"",lastInvoiced:"",active:true};
+  const cos=Array.from(new Set(S.legend.filter(x=>x.cat==="Client site").map(x=>x.co))).sort();
+  openDlg(`${dh(id?c.name:"Add client","Match the Xero contact to its roster company and rate item prefix")}
+  <form class="db" id="clf"><div class="grid2">
+    <label class="f">Xero contact name<input id="cl1" value="${esc(c.name)}" required autofocus></label>
+    <label class="f">Roster company<select id="cl2"><option value="">None</option>${cos.map(x=>`<option ${c.legendCompany===x?"selected":""}>${esc(x)}</option>`).join("")}</select></label>
+    <label class="f">Item code prefix<span class="hint">e.g. THIESS for “THIESS HDF A”</span><input id="cl3" value="${esc(c.prefix)}"></label>
+    <label class="f">Xero contact ID<span class="hint">Optional</span><input id="cl4" value="${esc(c.xeroId)}"></label>
+  </div><label class="row small" style="gap:6px"><input type="checkbox" id="cl5" ${c.active!==false?"checked":""} style="width:auto;min-height:0"> Active (shown in the quote builder)</label></form>
+  <div class="df"><span class="spacer"></span><button type="button" data-close>Cancel</button><button type="submit" form="clf" class="primary">Save</button></div>`);
+  $("#clf",dlg).onsubmit=ev=>{ev.preventDefault(); const data={...c,name:$("#cl1",dlg).value.trim(),legendCompany:$("#cl2",dlg).value,prefix:$("#cl3",dlg).value.trim().toUpperCase(),xeroId:$("#cl4",dlg).value.trim(),active:$("#cl5",dlg).checked};
+    saveDoc("clients/"+(id||slug(data.prefix||data.name)),data).then(()=>toast("Saved")); closeDlg()};
+}
+function openItem(){
+  openDlg(`${dh("Add rate item","Use the same code as the Xero item")}
+  <form class="db" id="itf"><div class="grid2">
+    <label class="f">Item code<input id="it1" required autofocus placeholder="e.g. BHP HDF S"></label>
+    <label class="f">Prefix<select id="it2"><option>GENERIC</option>${Array.from(new Set(Object.values(S.clients).map(c=>c.prefix).filter(Boolean))).sort().map(p=>`<option>${esc(p)}</option>`).join("")}</select></label>
+    <label class="f">Unit<select id="it3">${["hr","day","shift","km","ea","lot"].map(u=>`<option>${u}</option>`).join("")}</select></label>
+    <label class="f">List price<input id="it4" type="number" step="0.01" required></label>
+  </div><label class="f">Description<input id="it5" required></label></form>
+  <div class="df"><span class="spacer"></span><button type="button" data-close>Cancel</button><button type="submit" form="itf" class="primary">Save</button></div>`);
+  $("#itf",dlg).onsubmit=ev=>{ev.preventDefault(); const code=$("#it1",dlg).value.trim().toUpperCase(); const p=+$("#it4",dlg).value;
+    saveDoc("items/"+slug(code),{code,desc:$("#it5",dlg).value.trim(),unit:$("#it3",dlg).value,price:p,min:p,max:p,client:$("#it2",dlg).value,source:"Added manually"}).then(()=>toast("Item added")); closeDlg()};
+}
+function parseCsv(text){ const rows=[]; let r=[],v="",q=false; for(let i=0;i<text.length;i++){const ch=text[i];
+  if(q){ if(ch==='"'){ if(text[i+1]==='"'){v+='"';i++} else q=false } else v+=ch }
+  else if(ch==='"')q=true; else if(ch===","){r.push(v);v=""} else if(ch==="\n"||ch==="\r"){ if(ch==="\r"&&text[i+1]==="\n")i++; r.push(v);rows.push(r);r=[];v="" } else v+=ch }
+  if(v||r.length){r.push(v);rows.push(r)} return rows.filter(x=>x.some(c=>c.trim())) }
+async function importItems(file){
+  const rows=parseCsv(await file.text()); if(rows.length<2){toast("That file has no rows.",true);return}
+  const H=rows[0].map(h=>h.replace(/^\*/,"").replace(/\s+/g,"").toLowerCase()); const ix=n=>H.indexOf(n);
+  const iCode=ix("itemcode"), iName=ix("itemname"), iDesc=ix("salesdescription"), iPrice=ix("salesunitprice");
+  if(iCode<0||iPrice<0){toast("Couldn't find ItemCode and SalesUnitPrice columns. Export Products and services from Xero and try again.",true);return}
+  const prefixes=Object.values(S.clients).map(c=>(c.prefix||"").toUpperCase()).filter(Boolean).sort((a,b)=>b.length-a.length);
+  let n=0, skipped=0; toast("Importing items…");
+  for(const r of rows.slice(1)){ const code=(r[iCode]||"").trim(); const price=parseFloat(String(r[iPrice]||"").replace(/[$,]/g,"")); if(!code||isNaN(price)){skipped++;continue}
+    const up=code.toUpperCase(); const px=prefixes.find(p=>up.startsWith(p+" "))||"GENERIC";
+    const unit=/\bKM\b/.test(up)?"km":/\bVH\b|DAY/.test(up)?"day":/GEN\b/.test(up)?"shift":/CONS|MISC/.test(up)?"ea":"hr";
+    const id=slug(code); const ex=S.items[id]||{};
+    try{ await saveDoc("items/"+id,{code,desc:(iDesc>=0&&r[iDesc]?r[iDesc]:(iName>=0?r[iName]:code)).trim(),unit:ex.unit||unit,price,min:ex.min??price,max:ex.max??price,client:ex.client||px,source:"Xero items export"}); n++ }catch(_){ break } }
+  toast(`Imported ${n} items${skipped?`, skipped ${skipped} without a price`:""}`);
+}
+
+/* ================= LEGEND ================= */
+function renderLegend(main){
+  const q=S.legendQ.toLowerCase(); const cats={};
+  S.legend.forEach((x,i)=>{ if(q&&![x.c,x.d,x.co,x.cat].join(" ").toLowerCase().includes(q))return; (cats[x.cat||"Other"]??=[]).push([i,x]) });
+  const order=["Client site","Travel","Accommodation","Leave","Off roster","Shift","Status","Pre-employment / admin","Induction","OEMX location","Asset","Other"];
+  main.innerHTML=`<div class="secthead"><h2>Legend</h2><span class="muted">${S.legend.length} codes from the LH Roster 2026-27 legend tab</span><span class="spacer"></span><button class="primary" id="addl">Add code</button></div>
+  <div class="toolbar"><input type="search" id="lq" placeholder="Search code, site or company" value="${esc(S.legendQ)}" aria-label="Search legend"></div>
+  ${Object.keys(cats).sort((a,b)=>(order.indexOf(a)+99)%99-(order.indexOf(b)+99)%99).map(c=>`<h3 style="margin:18px 0 8px">${esc(c)} <span class="muted small">(${cats[c].length})</span></h3>
+  <div class="tframe"><table class="list"><tbody>${cats[c].map(([i,x])=>`<tr class="click" data-l="${i}"><td style="width:110px"><span class="swatch" style="background:${esc(x.col)};color:${ink(x.col)}">${esc(x.c)}</span></td><td>${esc(x.d)}</td><td>${esc(x.co)}</td></tr>`).join("")}</tbody></table></div>`).join("")||`<div class="empty-state">No codes match.</div>`}`;
+  $("#lq").oninput=e=>{S.legendQ=e.target.value;render()}; $("#addl").onclick=()=>openCode(-1); $$("[data-l]",main).forEach(r=>r.onclick=()=>openCode(+r.dataset.l));
+}
+function openCode(i){
+  const x=i>=0?S.legend[i]:{c:"",d:"",co:"",cat:"Client site",col:"#CCCCCC"}; const cats=Array.from(new Set(S.legend.map(l=>l.cat))).sort();
+  openDlg(`${dh(i>=0?"Code "+x.c:"Add code")}
+  <form class="db" id="lf"><div class="grid2">
+    <label class="f">Code<input id="l1" value="${esc(x.c)}" required autofocus></label>
+    <label class="f">Description<input id="l2" value="${esc(x.d)}" required></label>
+    <label class="f">Company<input id="l3" value="${esc(x.co)}" list="lcos"><datalist id="lcos">${companies().map(c=>`<option>${esc(c)}</option>`).join("")}</datalist></label>
+    <label class="f">Category<select id="l4">${cats.map(c=>`<option ${x.cat===c?"selected":""}>${esc(c)}</option>`).join("")}</select></label>
+    <label class="f">Colour<input id="l5" type="color" value="${esc(/^#[0-9a-f]{6}$/i.test(x.col)?x.col:"#cccccc")}" style="padding:2px"></label>
+  </div></form>
+  <div class="df">${i>=0?`<button type="button" class="danger" id="ldel">Delete code</button>`:""}<span class="spacer"></span><button type="button" data-close>Cancel</button><button type="submit" form="lf" class="primary">Save</button></div>`);
+  if(i>=0)$("#ldel",dlg).onclick=e=>inlineConfirm(e.currentTarget,`Delete ${x.c}? Roster cells using it will be flagged.`,()=>{const codes=S.legend.slice();codes.splice(i,1);saveDoc("config/legend",{codes}).then(()=>toast("Code deleted"));closeDlg()});
+  $("#lf",dlg).onsubmit=ev=>{ev.preventDefault(); const nx={c:$("#l1",dlg).value.trim(),d:$("#l2",dlg).value.trim(),co:$("#l3",dlg).value.trim(),cat:$("#l4",dlg).value,col:$("#l5",dlg).value.toUpperCase()};
+    const codes=S.legend.slice(); if(i>=0)codes[i]=nx; else codes.push(nx); saveDoc("config/legend",{codes}).then(()=>toast("Legend saved")); closeDlg()};
+}
+
+/* ================= MOBILISATION ================= */
+const ACCOM={AC:"Booked",ACC:"Not booked",JAC:"Jared accom"};
+const PREP=new Set(["IND","MED","MED?","PEM","F2F","DAS","VOC","T","TAFE","START"]);
+function swingsFor(sid,s,from,to){
+  const out=[]; let cur=null; const end=addD(to,21);
+  for(let d=addD(from,-21); d<=end; d=addD(d,1)){
+    const c=cellOf(sid,d); const code=c&&c.c; const up=String(code||"").toUpperCase(); const e=lg(code);
+    const work=isWorking(code)&&!PREP.has(up)&&!(e&&e.cat==="Pre-employment / admin");
+    if(work){ if(!cur)cur={sid,start:d,days:[]}; cur.days.push([d,c]); cur.end=d }
+    else if(cur){ out.push(cur); cur=null }
+  }
+  if(cur)out.push(cur);
+  return out.filter(w=>w.end>=from&&w.start<=to).map(w=>{
+    const codes=w.days.map(([,c])=>String(c.c||"").toUpperCase());
+    const sites=[...new Set(codes.filter(x=>isOnSite(x)))];
+    const firstE=lg(codes[0]), lastE=lg(codes[codes.length-1]);
+    const tin=firstE&&firstE.cat==="Travel"?codes[0]:"", tout=lastE&&lastE.cat==="Travel"?codes[codes.length-1]:"";
+    const flags=new Set(); w.days.forEach(([,c])=>[c.c,c.h,c.k].forEach(v=>String(v||"").toUpperCase().split(/[\s+\/]+/).forEach(t=>{if(ACCOM[t])flags.add(t)})));
+    const prep=new Set(); for(let d=addD(w.start,-14); d<=w.end; d=addD(d,1)){ const c=cellOf(sid,d); [c&&c.c,c&&c.h,c&&c.k].forEach(v=>String(v||"").toUpperCase().split(/[\s+\/]+/).forEach(t=>{if(PREP.has(t))prep.add(t)})) }
+    const drive=[tin,tout].some(t=>/^D(I|O)/.test(t)); const asset=(w.days.find(([,c])=>c.a)||[])[1]?.a||"";
+    const src=new Set(w.days.map(([,c])=>c.p||"set"));
+    const co=sites.map(x=>lg(x)?.co).filter(Boolean)[0]||s.company||"";
+    const attn=w.days.some(([,c])=>ATTN.has(String(c.c||"").toUpperCase())||ATTN.has(String(c.h||"").toUpperCase())||ATTN.has(String(c.k||"").toUpperCase()));
+    return {...w,sites,co,tin,tout,accom:[...flags],prep:[...prep],ute:asset||(drive?(s.ute&&s.ute!=="NO"?s.ute:""):""),drive,tentative:!src.has("set"),planned:src.has("plan"),attn};
+  });
+}
+function renderMob(main){
+  S.mobWeeks=S.mobWeeks||6; const from=TODAY, to=addD(TODAY,S.mobWeeks*7-1);
+  const q=(S.mobQ||"").toLowerCase();
+  let rows=[]; Object.entries(S.staff).filter(([,s])=>s.active!==false).forEach(([sid,s])=>swingsFor(sid,s,from,to).forEach(w=>rows.push({...w,s})));
+  if(q)rows=rows.filter(r=>[staffName(r.s),r.co,r.sites.join(" "),r.s.trade].join(" ").toLowerCase().includes(q));
+  if(S.mobCo)rows=rows.filter(r=>r.co===S.mobCo);
+  rows.sort((a,b)=>a.start.localeCompare(b.start)||staffName(a.s).localeCompare(staffName(b.s)));
+  const cos=[...new Set(rows.map(r=>r.co).filter(Boolean))].sort();
+  const chip=(t,cls)=>`<span class="chip ${cls||""}">${esc(t)}</span>`;
+  const sw=c=>{const e=lg(c);return `<span class="swatch" style="background:${e?e.col:"var(--sunk)"};color:${e?ink(e.col):"inherit"}">${esc(c)}</span>`};
+  main.innerHTML=`<div class="secthead"><h2>Mobilisation</h2><span class="muted">${rows.length} swings · next ${S.mobWeeks} weeks</span></div>
+  <div class="toolbar"><input type="search" id="mq" placeholder="Search person, client, site" value="${esc(S.mobQ||"")}" aria-label="Search mobilisations">
+   <select id="mco" aria-label="Client"><option value="">All clients</option>${cos.map(c=>`<option ${S.mobCo===c?"selected":""}>${esc(c)}</option>`).join("")}</select>
+   <select id="mwk" aria-label="Weeks ahead">${[2,4,6,8,12].map(n=>`<option value="${n}" ${S.mobWeeks===n?"selected":""}>Next ${n} weeks</option>`).join("")}</select></div>
+  <div class="tframe"><table class="list"><thead><tr><th>Person</th><th>Client / site</th><th>In</th><th>Out</th><th>Travel</th><th>Accommodation</th><th>Ute</th><th>Prep (14 days before)</th><th>Status</th></tr></thead><tbody>
+  ${rows.map(r=>`<tr class="click" data-sid="${r.sid}" data-d="${r.start}"><td><b>${esc(staffName(r.s))}</b><div class="small muted">${esc(r.s.trade)}</div></td>
+   <td>${r.co?chip(r.co):""} ${r.sites.map(sw).join(" ")||'<span class="muted">—</span>'}</td>
+   <td class="num">${fmtD(r.start)}</td><td class="num">${fmtD(r.end)}</td>
+   <td>${[r.tin,r.tout].filter(Boolean).map(sw).join(" → ")||'<span class="muted">—</span>'}</td>
+   <td>${r.accom.length?r.accom.map(a=>chip(ACCOM[a],a==="ACC"?"warn":"ok")).join(" "):'<span class="muted">—</span>'}</td>
+   <td>${esc(r.ute)||'<span class="muted">—</span>'}</td>
+   <td>${r.prep.map(sw).join(" ")||'<span class="muted">—</span>'}</td>
+   <td>${r.tentative?chip(r.planned?"Planned":"Projected"):chip("Rostered","ok")}${r.attn?" "+chip("Check","warn"):""}</td></tr>`).join("")||`<tr><td colspan="9"><div class="empty-state">No swings in this period.</div></td></tr>`}
+  </tbody></table></div>
+  <p class="small muted">Built from the roster. Accommodation comes from AC / ACC / JAC entries; the ute shows when the swing starts or ends with a drive code. Tap a row to open that day on the roster.</p>`;
+  $("#mq").oninput=e=>{S.mobQ=e.target.value;render()}; $("#mco").onchange=e=>{S.mobCo=e.target.value;render()}; $("#mwk").onchange=e=>{S.mobWeeks=+e.target.value;render()};
+  $$("[data-sid]",main).forEach(tr=>tr.onclick=()=>openCell(tr.dataset.sid,tr.dataset.d));
+}
+
+/* ================= boot ================= */
+function setSync(on,text){ $("#syncdot").className="dot"+(on?" on":""); $("#synctext").textContent=text }
+async function saveFile(filename,data){
+  try{ const blob=data instanceof Blob?data:new Blob([data],{type:/\.csv$/i.test(filename)?"text/csv":/\.pdf$/i.test(filename)?"application/pdf":"application/octet-stream"});
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000) }
+  catch(e){ toast("The file wasn't saved. Try again.",true) }
+}
+const VIEWS=["roster","mob","people","assets","rates","legend"];
+async function loadAll(){
+  setSync(false,"Loading…");
+  const [leg,staff,assets,clients,items,cells]=await Promise.all([
+    fetchAll("legend_codes","code,description,company,category,colour,sort_order",["sort_order","code"]),
+    fetchAll("staff","*",["id"]), fetchAll("assets","*",["id"]), fetchAll("clients","*",["id"]), fetchAll("rate_items","*",["code"]),
+    fetchAll("roster_cells","staff_id,day,code,hours,km,asset,source",["staff_id","day"])]);
+  S.legend=leg.map(legIn); S.L=new Map(S.legend.map(x=>[String(x.c).toUpperCase(),x]));
+  S.staff=Object.fromEntries(staff.map(r=>[r.id,staffIn(r)]));
+  S.assets=Object.fromEntries(assets.map(r=>[r.id,{name:r.name,type:r.type,notes:r.notes||""}]));
+  S.clients=Object.fromEntries(clients.map(r=>[r.id,clientIn(r)]));
+  S.items=Object.fromEntries(items.map(r=>[slug(r.code),itemIn(r)]));
+  S.weeks={}; cells.forEach(r=>putLocalCell(r.staff_id,r.day,cellIn(r)));
+  ["legend","staff","assets","clients","items","weeks"].forEach(k=>S.loaded.add(k));
+  if(!S.week)S.week=monday(TODAY); S.lastLoad=Date.now();
+  setSync(true,"Saved to OEMX database"); scheduleRender();
+}
+function showLogin(msg){
+  $("#tabs").parentElement.hidden=true; $("#who").hidden=true; setSync(false,"Signed out");
+  $("#main").innerHTML=`<form class="login" id="lf"><h2>Sign in</h2><p class="muted small">OEMX Operations — office staff</p>
+   <label class="f">Work email<input type="email" id="le" autocomplete="username" required autofocus></label>
+   <label class="f">Password<input type="password" id="lp" autocomplete="current-password" required minlength="8"></label>
+   <p class="small" id="lmsg" role="status">${esc(msg||"")}</p>
+   <div class="row"><button class="primary" type="submit">Sign in</button><span class="spacer"></span><button type="button" id="lnew">First time? Create password</button></div>
+   <p class="small muted">First time here: enter your work email, choose a password of at least 8 characters and tap <b>Create password</b>. Only invited emails can join.</p></form>`;
+  const m=$("#lmsg"); const vals=()=>({email:$("#le").value.trim().toLowerCase(),password:$("#lp").value});
+  $("#lf").onsubmit=async ev=>{ev.preventDefault(); m.textContent="Signing in…"; const {error}=await sb.auth.signInWithPassword(vals());
+    if(error)m.textContent=/confirm/i.test(error.message)?"Your email isn't confirmed yet. Ask Adam to switch off email confirmation in Supabase.":"That email and password don't match. First time? Tap Create password."};
+  $("#lnew").onclick=async()=>{ const v=vals(); if(!$("#lf").reportValidity())return; m.textContent="Creating your login…";
+    const {data,error}=await sb.auth.signUp(v);
+    if(error){ m.textContent=/not set up|Database error/i.test(error.message)?"This email isn't on the invite list. Contact Adam.":/registered|exists/i.test(error.message)?"You already have a login. Tap Sign in.":error.message; return }
+    if(!data.session)m.textContent="Login created. Check your email to confirm it, then sign in."; };
+}
+async function startApp(session){
+  const prof=(await sbq(sb.from("profiles").select("role,display_name").eq("user_id",session.user.id)))[0];
+  if(!prof||prof.role==="employee"){ $("#main").innerHTML=`<div class="empty-state"><h2>No office access</h2><p>This login isn't set up for the office dashboard. Contact Adam.</p><button id="so2">Sign out</button></div>`; $("#so2").onclick=()=>sb.auth.signOut(); return }
+  ME={id:session.user.id,role:prof.role,name:prof.display_name||session.user.email};
+  const RN={manager:"Manager",coordinator:"Coordinator",mobilisation:"Mobilisation Officer",accounts:"Accounts"};
+  $("#who").hidden=false; $("#whoname").textContent=ME.name+" · "+(RN[ME.role]||ME.role); $("#tabs").parentElement.hidden=false;
+  const v=location.hash.slice(1); setView(VIEWS.includes(v)?v:"roster");
+  db=true; await loadAll().catch(e=>{console.error(e);setSync(false,"Couldn't load");toast("Couldn't load the data. Refresh to try again.",true)});
+}
+async function boot(){
+  $("#so").onclick=()=>sb.auth.signOut();
+  document.addEventListener("visibilitychange",()=>{ if(!document.hidden&&ME&&Date.now()-(S.lastLoad||0)>60000&&!dlg.open)loadAll().catch(()=>{}) });
+  let started=false;
+  sb.auth.onAuthStateChange((ev,session)=>{
+    if(session&&!started){ started=true; setTimeout(()=>startApp(session),0) }
+    if(!session){ started=false; ME=null; db=null; showLogin() } });
+}
+boot();
+
+})();
+</script>
+
+</body>
+</html>
